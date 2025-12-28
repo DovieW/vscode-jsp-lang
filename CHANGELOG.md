@@ -1,5 +1,10 @@
 # Change Log
 
+## [0.2.0]
+
+- Add a bundled language server to provide HTML completion/hover inside `.jsp`
+- Add CSS completion/hover/diagnostics for `<style>` blocks and inline `style="..."`
+
 ## [0.1.9]
 
 - Improve attribute matching within directives

@@ -1,8 +1,8 @@
 {
     "name": "vscode-jsp-lang",
     "displayName": "JSP Language Support",
-    "description": "JSP syntax highlighting for VS Code",
-    "version": "0.1.9",
+    "description": "JSP syntax highlighting + HTML/CSS language features for VS Code",
+    "version": "0.2.0",
     "publisher": "samuel-weinhardt",
     "license": "MIT",
     "icon": "./assets/icon.png",
@@ -10,11 +10,21 @@
         "url": "https://github.com/samuel-weinhardt/vscode-jsp-lang"
     },
     "engines": {
-        "vscode": "^1.64.0"
+        "vscode": "^1.90.0"
     },
+    "main": "./dist/extension.js",
+    "activationEvents": [
+        "onLanguage:jsp"
+    ],
     "categories": [
         "Programming Languages"
     ],
+    "scripts": {
+        "build": "node ./esbuild.mjs --prod",
+        "watch": "node ./esbuild.mjs --watch",
+        "typecheck": "tsc -p ./tsconfig.json",
+        "vscode:prepublish": "npm run build"
+    },
     "contributes": {
         "languages": [
             {
@@ -46,7 +56,18 @@
             }
         ]
     },
+    "dependencies": {
+        "vscode-css-languageservice": "^6.3.0",
+        "vscode-html-languageservice": "^5.3.0",
+        "vscode-languageclient": "^9.0.1",
+        "vscode-languageserver": "^9.0.1",
+        "vscode-languageserver-textdocument": "^1.0.11"
+    },
     "devDependencies": {
-        "@vscode/vsce": "^2.21.1"
+        "@types/node": "^22.10.2",
+        "@types/vscode": "^1.90.0",
+        "@vscode/vsce": "^2.21.1",
+        "esbuild": "^0.24.2",
+        "typescript": "^5.7.2"
     }
 }

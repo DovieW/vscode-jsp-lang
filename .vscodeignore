@@ -1,2 +1,15 @@
 .vscode/**
 **/*.svg
+
+# build inputs
+src/**
+server/src/**
+**/*.ts
+tsconfig.json
+esbuild.mjs
+
+# misc
+.git/**
+.github/**
+docs/**
+**/*.map

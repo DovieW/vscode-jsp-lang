@@ -1,6 +1,12 @@
 # JSP Language Support
 
-This extension provides basic syntax highlighting support for Jakarta Server Pages (JSP; formerly JavaServer Pages) in VS Code.
+This extension provides JSP support for VS Code:
+
+- JSP syntax highlighting (TextMate grammar)
+- HTML language features inside `.jsp` (completion + hover)
+- CSS language features inside `<style>...</style>` and inline `style="..."` attributes (completion + hover + diagnostics)
+
+It does **not** (yet) implement JavaScript language features inside `<script>` blocks, nor Java IntelliSense for JSP scriptlets.
 
 Note that not all JSP patterns are handled. Contributions are welcome. Please open a pull request.
 
@@ -13,3 +19,18 @@ To enable [emmet abbreviations](https://code.visualstudio.com/docs/editor/emmet#
     "jsp": "html"
 }
 ```
+
+## Development
+
+1) Install dependencies
+
+2) Build
+
+3) Run the extension
+
+- Open this repository in VS Code
+- Press `F5` to launch the Extension Development Host
+- Open `samples/feature01.jsp` and try:
+    - typing `<di` and triggering completion (should suggest `<div>`)
+    - typing `displ` inside the `<style>` block (should complete to `display`)
+    - typing `col` inside `style="..."` (should complete `color`)

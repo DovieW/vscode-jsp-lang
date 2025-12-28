@@ -1,0 +1,13 @@
+<%--
+Test: JSPF file extension still gets Feature 01 HTML/CSS features.
+
+Try:
+- Inside <style>, type `displ` and complete `display`.
+- HTML completion also works because language id is `jsp`.
+--%>
+<style>
+  .jspf-box {
+    displ
+  }
+</style>
+<div class="jspf-box">JSPF style block test</div>
