@@ -30,10 +30,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   };
 
   const clientOptions: LanguageClientOptions = {
-    documentSelector: [
-      { language: 'jsp', scheme: 'file' },
-      { language: 'jsp', scheme: 'untitled' },
-    ],
+    // Important: don't restrict schemes. In remote workspaces (WSL/SSH/containers),
+    // documents often use `vscode-remote` (or other) schemes.
+    // If we restrict to `file`, the client never attaches and features like hover won't fire.
+    documentSelector: [{ language: 'jsp' }],
     outputChannel,
   };
 

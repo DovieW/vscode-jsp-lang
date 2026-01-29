@@ -2,18 +2,21 @@ import {
   type CompletionList,
   type CompletionParams,
   type CompletionItem,
+  CompletionItemKind,
   type Diagnostic,
   DiagnosticSeverity,
   type Hover,
   type HoverParams,
   type InitializeParams,
   type InitializeResult,
+  InsertTextFormat,
   type InsertReplaceEdit,
   type Range,
   type TextDocumentChangeEvent,
   TextDocumentSyncKind,
   type TextEdit,
 } from 'vscode-languageserver';
+import { fileURLToPath } from 'node:url';
 import {
   createConnection,
   ProposedFeatures,
@@ -29,6 +32,12 @@ import { getCSSLanguageService, type Stylesheet } from 'vscode-css-languageservi
 
 import { maskJspToHtml } from './jsp/maskToHtml';
 import { extractCssRegionsFromProjectedHtml, type CssRegion } from './jsp/extractCssRegions';
+import { extractJavaRegionsFromJsp, type JavaRegion } from './jsp/extractJavaRegions';
+import { buildTaglibIndex } from './jsp/taglibs/taglibIndex';
+import { parseTaglibDirectives } from './jsp/taglibs/parseTaglibDirectives';
+import { getStartTagContext } from './jsp/taglibs/startTagContext';
+import type { TaglibIndex } from './jsp/taglibs/types';
+import { validateTaglibUsageInJsp } from './jsp/taglibs/validateTaglibUsage';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
@@ -50,11 +59,58 @@ type PendingValidation = {
 
 const pendingValidations = new Map<string, PendingValidation>();
 
+let workspaceRoots: string[] = [];
+let taglibIndex: TaglibIndex | undefined;
+let taglibIndexBuild: Promise<void> | undefined;
+
+function uriToFsPath(uri: string | null | undefined): string | undefined {
+  if (!uri) {
+    return undefined;
+  }
+  try {
+    return fileURLToPath(uri);
+  } catch {
+    return undefined;
+  }
+}
+
+async function ensureTaglibIndex(): Promise<TaglibIndex | undefined> {
+  if (!workspaceRoots.length) {
+    return undefined;
+  }
+
+  // Rebuild occasionally (helps when users add .tld files while VS Code is open).
+  const isStale = !taglibIndex || Date.now() - taglibIndex.builtAtMs > 15_000;
+  if (!taglibIndexBuild && isStale) {
+    taglibIndexBuild = buildTaglibIndex(workspaceRoots)
+      .then((idx) => {
+        taglibIndex = idx;
+        connection.console.log(
+          `Taglib index built: ${idx.byUri.size} URIs (${idx.tldFileCount} .tld files, ${idx.parseErrorCount} parse errors)`,
+        );
+      })
+      .catch((err) => {
+        connection.console.error(`Taglib index build failed: ${String(err)}`);
+      })
+      .finally(() => {
+        taglibIndexBuild = undefined;
+      });
+  }
+
+  if (taglibIndexBuild) {
+    await taglibIndexBuild;
+  }
+
+  return taglibIndex;
+}
+
 type ParsedDocumentCache = {
   version: number;
   htmlDocument: TextDocument;
   htmlParsed: unknown;
   cssRegions: Array<{ region: CssRegion; stylesheet: Stylesheet }>;
+  javaRegions: JavaRegion[];
+  pageImports: string[];
 };
 
 const parsedCache = new Map<string, ParsedDocumentCache>();
@@ -71,6 +127,8 @@ function getOrCreateParsedCache(jspDocument: TextDocument): ParsedDocumentCache 
     return existing;
   }
 
+  const { regions: javaRegions, pageImports } = extractJavaRegionsFromJsp(jspDocument.getText());
+
   const htmlDocument = getProjectedHtmlDocument(jspDocument);
   const htmlParsed = htmlLanguageService.parseHTMLDocument(htmlDocument);
 
@@ -84,9 +142,106 @@ function getOrCreateParsedCache(jspDocument: TextDocument): ParsedDocumentCache 
     htmlDocument,
     htmlParsed,
     cssRegions,
+    javaRegions,
+    pageImports,
   };
   parsedCache.set(jspDocument.uri, next);
   return next;
+}
+
+function findJavaRegionAtOffset(cached: ParsedDocumentCache, jspOffset: number): JavaRegion | undefined {
+  return cached.javaRegions.find((r) => jspOffset >= r.jspContentStartOffset && jspOffset < r.jspContentEndOffset);
+}
+
+function isJavaScriptletRegion(region: JavaRegion): boolean {
+  return (
+    region.kind === 'scriptlet-statement' ||
+    region.kind === 'scriptlet-expression' ||
+    region.kind === 'scriptlet-declaration'
+  );
+}
+
+function getJavaImplicitObjectCompletions(): CompletionList {
+  // MVP (Feature 2 Phase 0): offer JSP implicit object identifiers only.
+  const implicitObjects: Array<{ name: string; detail: string }> = [
+    { name: 'request', detail: 'JSP implicit object (HttpServletRequest)' },
+    { name: 'response', detail: 'JSP implicit object (HttpServletResponse)' },
+    { name: 'session', detail: 'JSP implicit object (HttpSession)' },
+    { name: 'pageContext', detail: 'JSP implicit object (PageContext)' },
+    { name: 'application', detail: 'JSP implicit object (ServletContext)' },
+    { name: 'out', detail: 'JSP implicit object (JspWriter)' },
+    { name: 'config', detail: 'JSP implicit object (ServletConfig)' },
+    { name: 'page', detail: 'JSP implicit object (Object)' },
+    { name: 'exception', detail: 'JSP implicit object (Throwable; error pages only)' },
+  ];
+
+  const items: CompletionItem[] = implicitObjects.map(({ name, detail }) => ({
+    label: name,
+    kind: CompletionItemKind.Variable,
+    detail,
+  }));
+
+  return { isIncomplete: false, items };
+}
+
+function getLinePrefix(doc: TextDocument, position: { line: number; character: number }): string {
+  return doc.getText({
+    start: { line: position.line, character: 0 },
+    end: position,
+  });
+}
+
+function makeReplaceSuffixEdit(doc: TextDocument, position: { line: number; character: number }, replaceLen: number): Range {
+  const endOffset = doc.offsetAt(position);
+  const startOffset = Math.max(0, endOffset - replaceLen);
+  return { start: doc.positionAt(startOffset), end: doc.positionAt(endOffset) };
+}
+
+function getJspSnippetCompletions(doc: TextDocument, position: { line: number; character: number }): CompletionItem[] {
+  const prefix = getLinePrefix(doc, position);
+
+  // Offer snippets only when the user is obviously starting a JSP construct.
+  // This keeps the HTML completion list clean.
+  const suffixes: Array<{ suffix: string; replaceLen: number }> = [
+    { suffix: '<%=', replaceLen: 3 },
+    { suffix: '<%!', replaceLen: 3 },
+    { suffix: '<%@', replaceLen: 3 },
+    { suffix: '<%', replaceLen: 2 },
+  ];
+
+  const hit = suffixes.find((s) => prefix.endsWith(s.suffix));
+  if (!hit) {
+    return [];
+  }
+
+  const replaceRange = makeReplaceSuffixEdit(doc, position, hit.replaceLen);
+
+  const mk = (label: string, insertText: string, detail: string): CompletionItem => ({
+    label,
+    kind: CompletionItemKind.Snippet,
+    detail,
+    insertTextFormat: InsertTextFormat.Snippet,
+    textEdit: { range: replaceRange, newText: insertText },
+  });
+
+  // If the user already typed a more specific sigil (<%= / <%! / <%@), prefer only matching snippets.
+  if (hit.suffix === '<%=') {
+    return [mk('JSP: <%= ... %> (expression)', '<%= $0 %>', 'JSP expression scriptlet')];
+  }
+  if (hit.suffix === '<%!') {
+    return [mk('JSP: <%! ... %> (declaration)', '<%! $0 %>', 'JSP declaration scriptlet')];
+  }
+  if (hit.suffix === '<%@') {
+    return [mk('JSP: <%@ page import="..." %>', '<%@ page import="$1" %>$0', 'JSP page import directive')];
+  }
+
+  // Generic '<%' start: offer the common variants.
+  return [
+    mk('JSP: <% ... %> (scriptlet)', '<% $0 %>', 'JSP statement scriptlet'),
+    mk('JSP: <%= ... %> (expression)', '<%= $0 %>', 'JSP expression scriptlet'),
+    mk('JSP: <%! ... %> (declaration)', '<%! $0 %>', 'JSP declaration scriptlet'),
+    mk('JSP: <%@ page import="..." %>', '<%@ page import="$1" %>$0', 'JSP page import directive'),
+  ];
 }
 
 function findCssRegionAtOffset(
@@ -161,13 +316,113 @@ function mapCompletionListFromCssToJsp(
   return { ...list, items };
 }
 
-function validateJspDocument(jspDocument: TextDocument): void {
+function getTaglibCompletionItems(
+  jspDocument: TextDocument,
+  position: { line: number; character: number },
+  index: TaglibIndex | undefined,
+): CompletionItem[] {
+  if (!index) {
+    return [];
+  }
+
+  const jspText = jspDocument.getText();
+  const offset = jspDocument.offsetAt(position);
+
+  const prefixToUri = new Map<string, string>();
+  for (const d of parseTaglibDirectives(jspText)) {
+    prefixToUri.set(d.prefix, d.uri);
+  }
+
+  const ctx = getStartTagContext(jspText, offset);
+  if (!ctx?.prefix) {
+    return [];
+  }
+
+  const uri = prefixToUri.get(ctx.prefix);
+  if (!uri) {
+    return [];
+  }
+
+  const taglib = index.byUri.get(uri);
+  if (!taglib) {
+    return [];
+  }
+
+  // Tag name completion: `<prefix:...`
+  if (ctx.isInTagName) {
+    const typed = ctx.localNamePrefix ?? '';
+    const replaceRange: Range = {
+      start: jspDocument.positionAt(Math.max(0, offset - typed.length)),
+      end: position,
+    };
+
+    const items: CompletionItem[] = [];
+    for (const [name, tag] of taglib.tags) {
+      if (typed && !name.toLowerCase().startsWith(typed.toLowerCase())) {
+        continue;
+      }
+      items.push({
+        label: name,
+        kind: CompletionItemKind.Class,
+        detail: `JSP tag (${ctx.prefix})${taglib.shortName ? ` — ${taglib.shortName}` : ''}`,
+        documentation: tag.description,
+        textEdit: { range: replaceRange, newText: name },
+      });
+    }
+    return items;
+  }
+
+  // Attribute completion: `<prefix:tag ...`
+  if (!ctx.localName) {
+    return [];
+  }
+
+  const tagDef = taglib.tags.get(ctx.localName);
+  if (!tagDef) {
+    return [];
+  }
+
+  const typedAttr = ctx.attributeNamePrefix ?? '';
+  const replaceRange: Range = {
+    start: jspDocument.positionAt(Math.max(0, offset - typedAttr.length)),
+    end: position,
+  };
+
+  const items: CompletionItem[] = [];
+  for (const [name, attr] of tagDef.attributes) {
+    if (ctx.existingAttributes.has(name)) {
+      continue;
+    }
+    if (typedAttr && !name.toLowerCase().startsWith(typedAttr.toLowerCase())) {
+      continue;
+    }
+
+    const req = attr.required ? 'required' : 'optional';
+    items.push({
+      label: name,
+      kind: CompletionItemKind.Property,
+      detail: `Attribute (${req})${attr.type ? `: ${attr.type}` : ''}`,
+      documentation: attr.description,
+      insertTextFormat: InsertTextFormat.Snippet,
+      textEdit: { range: replaceRange, newText: `${name}="$1"$0` },
+    });
+  }
+  return items;
+}
+
+async function validateJspDocument(jspDocument: TextDocument): Promise<void> {
   const cached = getOrCreateParsedCache(jspDocument);
 
   const htmlDiagnostics = validateProjectedHtml(cached.htmlDocument, cached.htmlParsed);
   const cssDiagnostics = validateCssRegions(jspDocument, cached);
 
-  connection.sendDiagnostics({ uri: jspDocument.uri, diagnostics: [...htmlDiagnostics, ...cssDiagnostics] });
+  const tldIndex = await ensureTaglibIndex();
+  const taglibDiagnostics = validateTaglibUsageInJsp(jspDocument, tldIndex);
+
+  connection.sendDiagnostics({
+    uri: jspDocument.uri,
+    diagnostics: [...htmlDiagnostics, ...cssDiagnostics, ...taglibDiagnostics],
+  });
 }
 
 function validateCssRegions(jspDocument: TextDocument, cached: ParsedDocumentCache): Diagnostic[] {
@@ -316,13 +571,27 @@ function scheduleValidation(jspDocument: TextDocument): void {
     if (!latest || latest.version !== version) {
       return;
     }
-    validateJspDocument(latest);
+    void validateJspDocument(latest);
   }, 250);
 
   pendingValidations.set(uri, { timer, version });
 }
 
 connection.onInitialize((params: InitializeParams): InitializeResult => {
+  const roots: string[] = [];
+  const wf = params.workspaceFolders ?? [];
+  for (const f of wf) {
+    const p = uriToFsPath(f.uri);
+    if (p) {
+      roots.push(p);
+    }
+  }
+  const rootFromRootUri = uriToFsPath(params.rootUri);
+  if (rootFromRootUri && !roots.includes(rootFromRootUri)) {
+    roots.push(rootFromRootUri);
+  }
+  workspaceRoots = roots;
+
   const result: InitializeResult = {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
@@ -339,6 +608,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 
 connection.onInitialized(() => {
   connection.console.log('JSP language server ready');
+  // Build taglib index in the background.
+  void ensureTaglibIndex();
 });
 
 documents.onDidChangeContent((change: TextDocumentChangeEvent<TextDocument>) => {
@@ -357,7 +628,7 @@ documents.onDidClose((close: { document: TextDocument }) => {
   connection.sendDiagnostics({ uri: close.document.uri, diagnostics: [] });
 });
 
-connection.onCompletion((params: CompletionParams): CompletionList => {
+connection.onCompletion(async (params: CompletionParams): Promise<CompletionList> => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) {
     return { isIncomplete: false, items: [] };
@@ -365,6 +636,11 @@ connection.onCompletion((params: CompletionParams): CompletionList => {
 
   const cached = getOrCreateParsedCache(doc);
   const offset = doc.offsetAt(params.position);
+
+  const javaHit = findJavaRegionAtOffset(cached, offset);
+  if (javaHit && isJavaScriptletRegion(javaHit)) {
+    return getJavaImplicitObjectCompletions();
+  }
 
   const cssHit = findCssRegionAtOffset(cached, offset);
   if (cssHit) {
@@ -378,7 +654,22 @@ connection.onCompletion((params: CompletionParams): CompletionList => {
     return mapCompletionListFromCssToJsp(doc, region, cssDoc, list);
   }
 
-  return htmlLanguageService.doComplete(cached.htmlDocument, params.position, cached.htmlParsed as any);
+  const tldIndex = await ensureTaglibIndex();
+  const taglibItems = getTaglibCompletionItems(doc, params.position, tldIndex);
+
+  const jspSnippets = getJspSnippetCompletions(doc, params.position);
+  const htmlList = htmlLanguageService.doComplete(cached.htmlDocument, params.position, cached.htmlParsed as any);
+  if (!jspSnippets.length) {
+    return {
+      ...htmlList,
+      items: [...taglibItems, ...htmlList.items],
+    };
+  }
+
+  return {
+    ...htmlList,
+    items: [...jspSnippets, ...taglibItems, ...htmlList.items],
+  };
 });
 
 connection.onHover((params: HoverParams): Hover | null => {
