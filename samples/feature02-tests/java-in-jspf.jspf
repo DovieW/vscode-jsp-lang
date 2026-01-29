@@ -1,0 +1,10 @@
+<%--
+Feature 02: Scriptlets in .jspf
+
+Try this:
+- Trigger completion after `res` inside the scriptlet.
+--%>
+
+<%
+  res
+%>
