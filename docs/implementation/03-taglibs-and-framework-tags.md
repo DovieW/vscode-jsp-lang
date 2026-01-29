@@ -150,6 +150,8 @@ You don’t need full schema validation to start; a tolerant XML parser is fine.
 
 - Watch TLD files for changes and update index incrementally
 
+Status: implemented (MVP) — the language server registers a `**/*.tld` file watcher and invalidates/rebuilds the index on change.
+
 **Later**
 
 - Add jar scanning (build tool integration + zip reading)
@@ -253,6 +255,8 @@ Status: partially implemented — boolean attribute values (`true|false`) comple
 
 - Hover shows tag/attribute descriptions from the TLD
 - Changes to a `.tld` file update completions without reload
+
+Status: implemented (MVP) — changes to `.tld` files trigger an index refresh and re-validation for open JSP documents.
 
 ### Jar support (Milestone 3)
 

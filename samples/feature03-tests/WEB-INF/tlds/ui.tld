@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<taglib>
+  <tlib-version>1.0</tlib-version>
+  <short-name>ui</short-name>
+  <uri>http://example.com/tld/ui</uri>
+
+  <tag>
+    <name>panel</name>
+    <description>A demo UI panel tag (separate TLD) for testing multiple taglibs.</description>
+
+    <attribute>
+      <name>title</name>
+      <required>false</required>
+      <rtexprvalue>true</rtexprvalue>
+      <type>java.lang.String</type>
+      <description>Panel title text.</description>
+    </attribute>
+
+    <attribute>
+      <name>collapsible</name>
+      <required>false</required>
+      <rtexprvalue>true</rtexprvalue>
+      <type>boolean</type>
+      <description>Whether the panel can be collapsed.</description>
+    </attribute>
+  </tag>
+</taglib>

@@ -36,3 +36,7 @@ These files are meant to manually test **taglib intelligence**:
 
 6) Open `taglibs-diagnostics-missing-tld.jsp`
    - Verify you get a warning that the URI is imported but no matching `.tld` exists in the workspace.
+
+7) Open `taglibs-multiple-taglibs-completion.jsp`
+   - Verify multiple taglibs can coexist (prefix `demo` and `ui`).
+   - Verify `<ui:` suggests `panel` and attributes like `title` / `collapsible`.

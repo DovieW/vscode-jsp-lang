@@ -3,6 +3,7 @@ import {
   type CompletionParams,
   type CompletionItem,
   CompletionItemKind,
+  DidChangeWatchedFilesNotification,
   type Diagnostic,
   DiagnosticSeverity,
   type Hover,
@@ -785,6 +786,35 @@ connection.onInitialized(() => {
   connection.console.log('JSP language server ready');
   // Build taglib index in the background.
   void ensureTaglibIndex();
+
+  // Watch for .tld file changes so taglib completions/diagnostics update without reload.
+  // VS Code supports dynamic registration for file watching.
+  void connection.client
+    .register(DidChangeWatchedFilesNotification.type, {
+      watchers: [{ globPattern: '**/*.tld' }],
+    })
+    .then(() => {
+      connection.console.log('Registered .tld file watcher');
+    })
+    .catch((err) => {
+      // Non-fatal: the server will still periodically rebuild the taglib index.
+      connection.console.warn(`Failed to register .tld watcher: ${String(err)}`);
+    });
+});
+
+connection.onDidChangeWatchedFiles((params) => {
+  const hasTldChange = params.changes.some((c) => c.uri.toLowerCase().endsWith('.tld'));
+  if (!hasTldChange) {
+    return;
+  }
+
+  // Invalidate and rebuild lazily.
+  taglibIndex = undefined;
+
+  // Kick diagnostics refresh for currently-open docs so users see updates immediately.
+  for (const d of documents.all()) {
+    scheduleValidation(d);
+  }
 });
 
 documents.onDidChangeContent((change: TextDocumentChangeEvent<TextDocument>) => {
