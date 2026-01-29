@@ -22,5 +22,11 @@
 - **Hover support**
   - Use `<description>` from TLD tags/attributes for hover docs.
 
+  - Status: implemented (MVP) — see `samples/feature03-tests/taglibs-hover-docs.jsp`.
+
+- **Attribute value completions beyond boolean**
+  - Status: boolean-only is implemented (`true|false`).
+  - Future: enums (rare in TLDs), framework-specific known values, and bean/property inference (Feature 2).
+
 - **Support tagdir directives**
   - `<%@ taglib prefix="x" tagdir="/WEB-INF/tags" %>` (tag files) could be indexed separately.

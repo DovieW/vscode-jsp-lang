@@ -204,6 +204,8 @@ Use TLD `<description>` to show hover docs for:
 - `<prefix:tag>`
 - attributes
 
+Status: implemented (MVP) — hover shows tag/attribute descriptions from workspace `.tld` files.
+
 ### 5) Attribute value completion (advanced)
 
 TLDs don’t always provide value sets. Start with:
@@ -212,6 +214,8 @@ TLDs don’t always provide value sets. Start with:
 - known JSTL/Struts attributes that have conventional values (optional hardcoded catalogs)
 
 Then later integrate with Feature 2 for bean/property inference.
+
+Status: partially implemented — boolean attribute values (`true|false`) complete when the cursor is inside quotes for a known boolean attribute.
 
 ## Roadmap (recommended milestones)
 

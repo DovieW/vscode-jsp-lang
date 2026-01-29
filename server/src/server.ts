@@ -10,6 +10,7 @@ import {
   type InitializeParams,
   type InitializeResult,
   InsertTextFormat,
+  MarkupKind,
   type InsertReplaceEdit,
   type Range,
   type TextDocumentChangeEvent,
@@ -338,6 +339,8 @@ function getTaglibCompletionItems(
     return [];
   }
 
+  const ltOffset = ctx.ltOffset;
+
   const uri = prefixToUri.get(ctx.prefix);
   if (!uri) {
     return [];
@@ -346,6 +349,34 @@ function getTaglibCompletionItems(
   const taglib = index.byUri.get(uri);
   if (!taglib) {
     return [];
+  }
+
+  function getAttributeValueContext(): { attrName: string; valuePrefix: string; replaceRange: Range } | undefined {
+    // Try to detect `<prefix:tag attr="...|"` situations.
+    // We'll match the LAST attribute assignment before the cursor where the quote is not closed yet.
+    const tagEnd = jspText.indexOf('>', ltOffset);
+    if (tagEnd === -1 || offset > tagEnd) {
+      return undefined;
+    }
+
+    const beforeCursor = jspText.slice(ltOffset, offset);
+    // Example match groups:
+    //  1: attribute name
+    //  2: quote
+    //  3: current value prefix (may be empty)
+    const m = /(?:\s|^)([A-Za-z_][\w:.-]*)\s*=\s*(["'])([^"']*)$/.exec(beforeCursor);
+    if (!m) {
+      return undefined;
+    }
+
+    const attrName = m[1];
+    const valuePrefix = m[3] ?? '';
+    const replaceRange: Range = {
+      start: jspDocument.positionAt(Math.max(0, offset - valuePrefix.length)),
+      end: position,
+    };
+
+    return { attrName, valuePrefix, replaceRange };
   }
 
   // Tag name completion: `<prefix:...`
@@ -382,6 +413,31 @@ function getTaglibCompletionItems(
     return [];
   }
 
+  // Attribute *value* completion (e.g. boolean `true|false`).
+  // Note: this is intentionally conservative; we only complete inside quotes.
+  const valueCtx = getAttributeValueContext();
+  if (valueCtx) {
+    const attrDef = tagDef.attributes.get(valueCtx.attrName);
+    if (!attrDef) {
+      return [];
+    }
+
+    const t = (attrDef.type ?? '').toLowerCase();
+    if (t === 'boolean' || t === 'java.lang.boolean') {
+      const items: CompletionItem[] = ['true', 'false']
+        .filter((v) => !valueCtx.valuePrefix || v.startsWith(valueCtx.valuePrefix.toLowerCase()))
+        .map((v) => ({
+          label: v,
+          kind: CompletionItemKind.Value,
+          detail: 'boolean',
+          textEdit: { range: valueCtx.replaceRange, newText: v },
+        }));
+      return items;
+    }
+
+    return [];
+  }
+
   const typedAttr = ctx.attributeNamePrefix ?? '';
   const replaceRange: Range = {
     start: jspDocument.positionAt(Math.max(0, offset - typedAttr.length)),
@@ -408,6 +464,125 @@ function getTaglibCompletionItems(
     });
   }
   return items;
+}
+
+function getTaglibHover(
+  jspDocument: TextDocument,
+  position: { line: number; character: number },
+  index: TaglibIndex | undefined,
+): Hover | null {
+  if (!index) {
+    return null;
+  }
+
+  const jspText = jspDocument.getText();
+  const offset = jspDocument.offsetAt(position);
+
+  // Must be within a tag.
+  const lt = jspText.lastIndexOf('<', Math.max(0, offset));
+  if (lt === -1) {
+    return null;
+  }
+  const gtBefore = jspText.lastIndexOf('>', Math.max(0, offset));
+  if (gtBefore > lt) {
+    return null;
+  }
+  const tagEnd = jspText.indexOf('>', lt);
+  if (tagEnd === -1 || offset > tagEnd) {
+    return null;
+  }
+
+  // Skip JSP blocks like `<% ... %>` and processing instructions.
+  const next = jspText[lt + 1] ?? '';
+  if (next === '%' || next === '!' || next === '?') {
+    return null;
+  }
+
+  // Parse tag name (supports both start and end tags).
+  let i = lt + 1;
+  while (i < jspText.length && /\s/.test(jspText[i] ?? '')) i++;
+  if (jspText[i] === '/') {
+    i++;
+    while (i < jspText.length && /\s/.test(jspText[i] ?? '')) i++;
+  }
+  const nameStart = i;
+  while (i < jspText.length && /[A-Za-z0-9_.:-]/.test(jspText[i] ?? '')) i++;
+  const nameEnd = i;
+  const fullName = jspText.slice(nameStart, nameEnd);
+  if (!fullName.includes(':')) {
+    return null;
+  }
+
+  const colon = fullName.indexOf(':');
+  const prefix = fullName.slice(0, colon);
+  const localName = fullName.slice(colon + 1);
+
+  const prefixToUri = new Map<string, string>();
+  for (const d of parseTaglibDirectives(jspText)) {
+    prefixToUri.set(d.prefix, d.uri);
+  }
+
+  const uri = prefixToUri.get(prefix);
+  if (!uri) {
+    return null;
+  }
+  const taglib = index.byUri.get(uri);
+  if (!taglib) {
+    return null;
+  }
+  const tagDef = taglib.tags.get(localName);
+  if (!tagDef) {
+    return null;
+  }
+
+  // Hovering tag name?
+  if (offset >= nameStart && offset <= nameEnd) {
+    const md = [
+      `**<${prefix}:${localName}>**`,
+      taglib.uri ? `\n\nURI: \`${taglib.uri}\`` : '',
+      tagDef.description ? `\n\n${tagDef.description}` : '',
+    ].join('');
+    return {
+      contents: { kind: MarkupKind.Markdown, value: md },
+      range: { start: jspDocument.positionAt(nameStart), end: jspDocument.positionAt(nameEnd) },
+    };
+  }
+
+  // Hovering an attribute name?
+  const between = jspText.slice(nameEnd, tagEnd);
+  const rel = offset - nameEnd;
+  if (rel < 0 || rel > between.length) {
+    return null;
+  }
+
+  const attrRe = /(?:^|\s)([A-Za-z_][\w:.-]*)(?=\s*=)/g;
+  let m: RegExpExecArray | null;
+  while ((m = attrRe.exec(between))) {
+    const attrName = m[1];
+    const attrStartRel = m.index + (m[0].length - attrName.length);
+    const attrEndRel = attrStartRel + attrName.length;
+
+    if (rel >= attrStartRel && rel <= attrEndRel) {
+      const attrDef = tagDef.attributes.get(attrName);
+      if (!attrDef) {
+        return null;
+      }
+
+      const bits: string[] = [`**${attrName}**`];
+      if (attrDef.type) bits.push(`\n\nType: \`${attrDef.type}\``);
+      if (attrDef.required != null) bits.push(`\n\nRequired: ${attrDef.required ? 'yes' : 'no'}`);
+      if (attrDef.description) bits.push(`\n\n${attrDef.description}`);
+
+      const start = nameEnd + attrStartRel;
+      const end = nameEnd + attrEndRel;
+      return {
+        contents: { kind: MarkupKind.Markdown, value: bits.join('') },
+        range: { start: jspDocument.positionAt(start), end: jspDocument.positionAt(end) },
+      };
+    }
+  }
+
+  return null;
 }
 
 async function validateJspDocument(jspDocument: TextDocument): Promise<void> {
@@ -672,7 +847,7 @@ connection.onCompletion(async (params: CompletionParams): Promise<CompletionList
   };
 });
 
-connection.onHover((params: HoverParams): Hover | null => {
+connection.onHover(async (params: HoverParams): Promise<Hover | null> => {
   const doc = documents.get(params.textDocument.uri);
   if (!doc) {
     return null;
@@ -696,6 +871,12 @@ connection.onHover((params: HoverParams): Hover | null => {
       ...hover,
       range: hover.range ? mapRangeFromCssToJsp(doc, region, cssDoc, hover.range) : undefined,
     };
+  }
+
+  const tldIndex = await ensureTaglibIndex();
+  const taglibHover = getTaglibHover(doc, params.position, tldIndex);
+  if (taglibHover) {
+    return taglibHover;
   }
 
   return htmlLanguageService.doHover(cached.htmlDocument, params.position, cached.htmlParsed as any);

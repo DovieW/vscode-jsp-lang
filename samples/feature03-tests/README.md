@@ -25,3 +25,14 @@ These files are meant to manually test **taglib intelligence**:
      - unknown prefix `<oops:...>`
      - unknown tag `<demo:notATag>`
      - unknown attribute `wat="..."` on `<demo:form>`
+
+4) Open `taglibs-hover-docs.jsp`
+   - Hover over `demo:form` and verify you see the tag description from the TLD.
+   - Hover over `action`/`method` and verify you see attribute info.
+
+5) Open `taglibs-boolean-attr-value-completion.jsp`
+   - Put the cursor inside `test=""` or `disabled=""` and trigger completion.
+   - Verify it suggests `true` / `false`.
+
+6) Open `taglibs-diagnostics-missing-tld.jsp`
+   - Verify you get a warning that the URI is imported but no matching `.tld` exists in the workspace.
