@@ -216,7 +216,7 @@ Add settings (future) such as:
 
 ---
 
-## Current status in this repo (Milestones 1–3 ✅; Java-backed diagnostics ❌)
+## Current status in this repo (Milestones 1–4 ✅)
 
 We currently ship JSP-aware diagnostics via the bundled language server:
 
@@ -224,10 +224,18 @@ We currently ship JSP-aware diagnostics via the bundled language server:
 - **Taglib diagnostics** for unknown prefixes/tags/attributes when `.tld` data is available (Feature 03 foundation)
 - **JSP linting MVP** (Feature 06):
   - Info diagnostic when any **scriptlet** (`<% ... %>`) is present
+  - Heuristic scriptlet rules (configurable thresholds):
+    - too many scriptlets in a file
+    - scriptlet too large (line count)
+    - deeply nested control flow (brace-depth heuristic)
   - Warnings for malformed taglib directives missing `prefix` or `uri`
   - Warnings for **unresolvable include paths** in `<%@ include file="..." %>` and `<jsp:include page="..." />` (best-effort filesystem resolution)
+  - Optional: **Java syntax diagnostics** for code inside scriptlets (no type checking)
+
+- **Quick fixes (Code Actions)** for a few safe cases:
+  - Add missing `prefix`/`uri` attributes in a `<%@ taglib ... %>` directive
+  - Add a `<%@ taglib prefix="..." uri="" %>` skeleton when a prefix is used without being declared
 
 What’s still out of scope / not implemented:
 
-- Java compiler/typecheck diagnostics inside scriptlets (Feature 2 prerequisite)
-- Configurable rule severities / per-rule enable/disable (future settings work)
+- Java type-check / classpath-aware diagnostics inside scriptlets (Feature 2 prerequisite)

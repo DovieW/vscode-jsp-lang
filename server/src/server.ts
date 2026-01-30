@@ -3,6 +3,9 @@ import {
   type CompletionParams,
   type CompletionItem,
   CompletionItemKind,
+  type CodeAction,
+  CodeActionKind,
+  type CodeActionParams,
   DidChangeWatchedFilesNotification,
   type Diagnostic,
   DiagnosticSeverity,
@@ -48,8 +51,10 @@ import { buildTaglibIndex } from './jsp/taglibs/taglibIndex';
 import { parseTaglibDirectives } from './jsp/taglibs/parseTaglibDirectives';
 import { getStartTagContext } from './jsp/taglibs/startTagContext';
 import type { TaglibIndex } from './jsp/taglibs/types';
-import { validateTaglibUsageInJsp } from './jsp/taglibs/validateTaglibUsage';
+import { validateTaglibUsageInJspWithConfig } from './jsp/taglibs/validateTaglibUsage';
 import { validateJspLinting } from './jsp/diagnostics/jspLint';
+import { DEFAULT_LINT_CONFIG, normalizeLintConfig, severityFromRuleLevel } from './jsp/diagnostics/lintConfig';
+import { validateJavaScriptletSyntax } from './jsp/diagnostics/javaScriptletDiagnostics';
 import {
   buildPrefixRenameEdits,
   findIncludePathAtOffset,
@@ -90,6 +95,8 @@ type TaglibsConfig = {
 };
 
 let taglibsConfig: TaglibsConfig = {};
+
+let lintConfig = DEFAULT_LINT_CONFIG;
 
 function uriToFsPath(uri: string | null | undefined): string | undefined {
   if (!uri) {
@@ -624,18 +631,30 @@ async function validateJspDocument(jspDocument: TextDocument): Promise<void> {
   const cssDiagnostics = validateCssRegions(jspDocument, cached);
 
   const tldIndex = await ensureTaglibIndex();
-  const taglibDiagnostics = validateTaglibUsageInJsp(jspDocument, tldIndex);
+  const taglibDiagnostics = validateTaglibUsageInJspWithConfig(jspDocument, tldIndex, lintConfig);
 
   const lintDiagnostics = validateJspLinting({
     doc: jspDocument,
     javaRegions: cached.javaRegions,
     workspaceRoots,
     docFsPath: uriToFsPath(jspDocument.uri),
+    lintConfig,
   });
+
+  const javaSyntaxSeverity = severityFromRuleLevel(lintConfig, 'jsp.java.syntax', 'error');
+  const javaDiagnostics =
+    lintConfig.java.enableSyntaxDiagnostics && javaSyntaxSeverity !== null
+      ? validateJavaScriptletSyntax({
+          doc: jspDocument,
+          javaRegions: cached.javaRegions,
+          pageImports: cached.pageImports,
+          severity: javaSyntaxSeverity,
+        })
+      : [];
 
   connection.sendDiagnostics({
     uri: jspDocument.uri,
-    diagnostics: [...htmlDiagnostics, ...cssDiagnostics, ...taglibDiagnostics, ...lintDiagnostics],
+    diagnostics: [...htmlDiagnostics, ...cssDiagnostics, ...taglibDiagnostics, ...lintDiagnostics, ...javaDiagnostics],
   });
 }
 
@@ -818,6 +837,8 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
     };
   }
 
+  lintConfig = normalizeLintConfig(init?.lint);
+
   const result: InitializeResult = {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
@@ -830,6 +851,9 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
       referencesProvider: true,
       renameProvider: true,
       documentSymbolProvider: true,
+
+      // Feature 06: quick fixes for some diagnostics.
+      codeActionProvider: true,
     },
   };
 
@@ -847,6 +871,14 @@ connection.onNotification('jsp/taglibsConfig', (cfg: any) => {
 
   taglibIndex = undefined;
   // Revalidate open docs so completions/diagnostics update quickly.
+  for (const d of documents.all()) {
+    scheduleValidation(d);
+  }
+});
+
+// Custom notification from the VS Code extension when jsp.lint.* settings change.
+connection.onNotification('jsp/lintConfig', (cfg: any) => {
+  lintConfig = normalizeLintConfig(cfg);
   for (const d of documents.all()) {
     scheduleValidation(d);
   }
@@ -922,6 +954,28 @@ function parseTaglibPrefixToUri(jspText: string): Map<string, string> {
     m.set(d.prefix, d.uri);
   }
   return m;
+}
+
+function findEnclosingTaglibDirectiveSpan(jspText: string, offset: number): { startOffset: number; endOffset: number; text: string } | null {
+  const re = /<%@\s*taglib\b[\s\S]*?%>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(jspText))) {
+    const startOffset = m.index;
+    const text = m[0];
+    const endOffset = startOffset + text.length;
+    if (offset >= startOffset && offset <= endOffset) {
+      return { startOffset, endOffset, text };
+    }
+  }
+  return null;
+}
+
+function insertionOffsetBeforeDirectiveClose(span: { startOffset: number; endOffset: number; text: string }): number {
+  const closeIndex = span.text.lastIndexOf('%>');
+  if (closeIndex === -1) {
+    return span.endOffset;
+  }
+  return span.startOffset + closeIndex;
 }
 
 function resolveIncludeTargetToFileUri(doc: TextDocument, includePath: string): string | undefined {
@@ -1148,6 +1202,75 @@ connection.onDocumentSymbol((params): Array<DocumentSymbol> | Array<SymbolInform
     return [];
   }
   return buildDirectiveSymbols(doc);
+});
+
+connection.onCodeAction((params: CodeActionParams): CodeAction[] => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) {
+    return [];
+  }
+
+  const text = doc.getText();
+  const actions: CodeAction[] = [];
+
+  for (const d of params.context.diagnostics ?? []) {
+    const code = typeof d.code === 'string' ? d.code : undefined;
+    if (!code) {
+      continue;
+    }
+
+    // Quick fix: add missing taglib directive attributes.
+    if (code === 'jsp.directive.taglib-missing-prefix' || code === 'jsp.directive.taglib-missing-uri') {
+      const offset = doc.offsetAt(d.range.start);
+      const span = findEnclosingTaglibDirectiveSpan(text, offset);
+      if (!span) {
+        continue;
+      }
+
+      const insertOffset = insertionOffsetBeforeDirectiveClose(span);
+      const attr = code === 'jsp.directive.taglib-missing-prefix' ? 'prefix=""' : 'uri=""';
+
+      actions.push({
+        title: `Add ${attr.split('=')[0]} attribute`,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [d],
+        edit: {
+          changes: {
+            [doc.uri]: [
+              {
+                range: { start: doc.positionAt(insertOffset), end: doc.positionAt(insertOffset) },
+                newText: ` ${attr}`,
+              },
+            ],
+          },
+        },
+      });
+    }
+
+    // Quick fix: add taglib directive for unknown prefix.
+    if (code === 'jsp.taglib.unknown-prefix') {
+      const prefix = (d as any).data?.prefix;
+      if (typeof prefix !== 'string' || !prefix.trim()) {
+        continue;
+      }
+
+      const insertAtTop = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+      const snippet = `<%@ taglib prefix="${prefix}" uri="" %>\n`;
+
+      actions.push({
+        title: `Add <%@ taglib %> directive for prefix "${prefix}"`,
+        kind: CodeActionKind.QuickFix,
+        diagnostics: [d],
+        edit: {
+          changes: {
+            [doc.uri]: [{ range: insertAtTop, newText: snippet }],
+          },
+        },
+      });
+    }
+  }
+
+  return actions;
 });
 
 connection.onInitialized(() => {

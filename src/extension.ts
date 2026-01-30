@@ -21,6 +21,27 @@ function getTaglibsConfig(): { tldGlobs: string[]; enableJarScanning: boolean; j
   return { tldGlobs, enableJarScanning, jarGlobs };
 }
 
+function getLintConfig(): {
+  enable: boolean;
+  rules: Record<string, string>;
+  scriptlets: { maxCount: number; maxLines: number; maxNesting: number };
+  java: { enableSyntaxDiagnostics: boolean };
+} {
+  const cfg = vscode.workspace.getConfiguration('jsp');
+  const enable = cfg.get<boolean>('lint.enable', true);
+  const rules = cfg.get<Record<string, string>>('lint.rules', {});
+  const maxCount = cfg.get<number>('lint.scriptlets.maxCount', 5);
+  const maxLines = cfg.get<number>('lint.scriptlets.maxLines', 30);
+  const maxNesting = cfg.get<number>('lint.scriptlets.maxNesting', 3);
+  const enableSyntaxDiagnostics = cfg.get<boolean>('lint.java.enableSyntaxDiagnostics', false);
+  return {
+    enable,
+    rules,
+    scriptlets: { maxCount, maxLines, maxNesting },
+    java: { enableSyntaxDiagnostics },
+  };
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   outputChannel = vscode.window.createOutputChannel('JSP Language Server');
   context.subscriptions.push(outputChannel);
@@ -56,6 +77,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     outputChannel,
     initializationOptions: {
       taglibs: getTaglibsConfig(),
+      lint: getLintConfig(),
     },
   };
 
@@ -77,6 +99,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
       if (e.affectsConfiguration('jsp.taglibs')) {
         void client.sendNotification('jsp/taglibsConfig', getTaglibsConfig());
+      }
+
+      if (e.affectsConfiguration('jsp.lint')) {
+        void client.sendNotification('jsp/lintConfig', getLintConfig());
       }
     }),
   );

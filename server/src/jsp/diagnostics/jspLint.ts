@@ -3,10 +3,11 @@ import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { Diagnostic } from 'vscode-languageserver';
-import { DiagnosticSeverity } from 'vscode-languageserver';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { JavaRegion } from '../extractJavaRegions';
+import type { LintConfig } from './lintConfig';
+import { DEFAULT_LINT_CONFIG, effectiveRuleLevel, severityFromLevel } from './lintConfig';
 
 function isScriptletRegion(region: JavaRegion): boolean {
   return (
@@ -56,7 +57,7 @@ function resolveIncludeTargetToFsPath(args: {
   return undefined;
 }
 
-function pushDirectiveTaglibMissingAttrDiagnostics(doc: TextDocument, jspText: string, out: Diagnostic[]): void {
+function pushDirectiveTaglibMissingAttrDiagnostics(doc: TextDocument, jspText: string, out: Diagnostic[], lint: LintConfig): void {
   const dirRe = /<%@\s*taglib\b([\s\S]*?)%>/gi;
   let m: RegExpExecArray | null;
   while ((m = dirRe.exec(jspText))) {
@@ -87,23 +88,33 @@ function pushDirectiveTaglibMissingAttrDiagnostics(doc: TextDocument, jspText: s
     const rangeEnd = keywordIndex >= 0 ? rangeStart + 'taglib'.length : Math.min(endOffset, startOffset + 5);
 
     if (!prefix) {
+      const sev = severityFromLevel(effectiveRuleLevel(lint, 'jsp.directive.taglib-missing-prefix', 'warning'));
+      if (!sev) {
+        // off
+      } else {
       out.push({
         message: 'Taglib directive is missing required attribute "prefix".',
-        severity: DiagnosticSeverity.Warning,
+        severity: sev,
         range: { start: doc.positionAt(rangeStart), end: doc.positionAt(rangeEnd) },
         source: 'jsp-lang(lint)',
         code: 'jsp.directive.taglib-missing-prefix',
       });
+      }
     }
 
     if (!uri) {
+      const sev = severityFromLevel(effectiveRuleLevel(lint, 'jsp.directive.taglib-missing-uri', 'warning'));
+      if (!sev) {
+        // off
+      } else {
       out.push({
         message: 'Taglib directive is missing required attribute "uri".',
-        severity: DiagnosticSeverity.Warning,
+        severity: sev,
         range: { start: doc.positionAt(rangeStart), end: doc.positionAt(rangeEnd) },
         source: 'jsp-lang(lint)',
         code: 'jsp.directive.taglib-missing-uri',
       });
+      }
     }
   }
 }
@@ -113,6 +124,7 @@ function pushIncludeUnresolvableDiagnostics(
   jspText: string,
   out: Diagnostic[],
   args: { docFsPath?: string; workspaceRoots: string[] },
+  lint: LintConfig,
 ): void {
   const { docFsPath, workspaceRoots } = args;
   if (!docFsPath || !workspaceRoots.length) {
@@ -148,13 +160,16 @@ function pushIncludeUnresolvableDiagnostics(
       continue;
     }
 
-    out.push({
-      message: `Include target "${p}" could not be resolved in the workspace.`,
-      severity: DiagnosticSeverity.Warning,
-      range: { start: doc.positionAt(valueStart), end: doc.positionAt(valueEnd) },
-      source: 'jsp-lang(lint)',
-      code: 'jsp.include.unresolvable',
-    });
+    const sev = severityFromLevel(effectiveRuleLevel(lint, 'jsp.include.unresolvable', 'warning'));
+    if (sev) {
+      out.push({
+        message: `Include target "${p}" could not be resolved in the workspace.`,
+        severity: sev,
+        range: { start: doc.positionAt(valueStart), end: doc.positionAt(valueEnd) },
+        source: 'jsp-lang(lint)',
+        code: 'jsp.include.unresolvable',
+      });
+    }
   }
 
   // <jsp:include page="..." />
@@ -183,19 +198,27 @@ function pushIncludeUnresolvableDiagnostics(
       continue;
     }
 
-    out.push({
-      message: `Include target "${p}" could not be resolved in the workspace.`,
-      severity: DiagnosticSeverity.Warning,
-      range: { start: doc.positionAt(valueStart), end: doc.positionAt(valueEnd) },
-      source: 'jsp-lang(lint)',
-      code: 'jsp.include.unresolvable',
-    });
+    const sev = severityFromLevel(effectiveRuleLevel(lint, 'jsp.include.unresolvable', 'warning'));
+    if (sev) {
+      out.push({
+        message: `Include target "${p}" could not be resolved in the workspace.`,
+        severity: sev,
+        range: { start: doc.positionAt(valueStart), end: doc.positionAt(valueEnd) },
+        source: 'jsp-lang(lint)',
+        code: 'jsp.include.unresolvable',
+      });
+    }
   }
 }
 
-function pushScriptletPresenceDiagnostic(doc: TextDocument, javaRegions: JavaRegion[], out: Diagnostic[]): void {
+function pushScriptletPresenceDiagnostic(doc: TextDocument, javaRegions: JavaRegion[], out: Diagnostic[], lint: LintConfig): void {
   const first = javaRegions.find(isScriptletRegion);
   if (!first) {
+    return;
+  }
+
+  const sev = severityFromLevel(effectiveRuleLevel(lint, 'jsp.scriptlet.present', 'info'));
+  if (!sev) {
     return;
   }
 
@@ -206,11 +229,109 @@ function pushScriptletPresenceDiagnostic(doc: TextDocument, javaRegions: JavaReg
   out.push({
     message:
       'JSP scriptlet detected. Consider migrating logic to taglibs (JSTL) / EL, or move code into Java classes for better maintainability.',
-    severity: DiagnosticSeverity.Information,
+    severity: sev,
     range: { start: doc.positionAt(start), end: doc.positionAt(end) },
     source: 'jsp-lang(lint)',
     code: 'jsp.scriptlet.present',
   });
+}
+
+function countLines(text: string): number {
+  if (!text) return 0;
+  // Count newline chars + 1.
+  let n = 1;
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10) n++;
+  }
+  return n;
+}
+
+function estimateMaxBraceDepth(javaSnippet: string): number {
+  // Very rough heuristic. We want "deeply nested logic" signals, not correctness.
+  let depth = 0;
+  let max = 0;
+  for (let i = 0; i < javaSnippet.length; i++) {
+    const c = javaSnippet.charCodeAt(i);
+    if (c === 123 /* { */) {
+      depth++;
+      if (depth > max) max = depth;
+    } else if (c === 125 /* } */) {
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  return max;
+}
+
+function pushScriptletCountAndSizeDiagnostics(doc: TextDocument, javaRegions: JavaRegion[], out: Diagnostic[], lint: LintConfig): void {
+  const scriptlets = javaRegions.filter(isScriptletRegion);
+  if (!scriptlets.length) {
+    return;
+  }
+
+  // Too many scriptlets
+  const maxCount = Math.max(0, lint.scriptlets.maxCount ?? 0);
+  if (maxCount > 0 && scriptlets.length > maxCount) {
+    const sev = severityFromLevel(effectiveRuleLevel(lint, 'jsp.scriptlet.too-many', 'info'));
+    if (sev) {
+      const first = scriptlets[0]!;
+      const start = first.jspStartOffset;
+      const end = Math.min(first.jspStartOffset + 3, first.jspEndOffset);
+      out.push({
+        message: `This file contains ${scriptlets.length} scriptlet blocks (limit: ${maxCount}). Consider moving logic into taglibs/EL or Java classes.`,
+        severity: sev,
+        range: { start: doc.positionAt(start), end: doc.positionAt(end) },
+        source: 'jsp-lang(lint)',
+        code: 'jsp.scriptlet.too-many',
+      });
+    }
+  }
+
+  // Too large + nested control flow (per-block)
+  const maxLines = Math.max(0, lint.scriptlets.maxLines ?? 0);
+  const maxNesting = Math.max(0, lint.scriptlets.maxNesting ?? 0);
+
+  for (const r of scriptlets) {
+    const body = doc.getText({
+      start: doc.positionAt(r.jspContentStartOffset),
+      end: doc.positionAt(r.jspContentEndOffset),
+    });
+
+    if (maxLines > 0) {
+      const lines = countLines(body);
+      if (lines > maxLines) {
+        const sev = severityFromLevel(effectiveRuleLevel(lint, 'jsp.scriptlet.too-large', 'info'));
+        if (sev) {
+          const start = r.jspStartOffset;
+          const end = Math.min(r.jspStartOffset + 3, r.jspEndOffset);
+          out.push({
+            message: `This scriptlet spans ~${lines} lines (limit: ${maxLines}). Consider extracting logic for readability.`,
+            severity: sev,
+            range: { start: doc.positionAt(start), end: doc.positionAt(end) },
+            source: 'jsp-lang(lint)',
+            code: 'jsp.scriptlet.too-large',
+          });
+        }
+      }
+    }
+
+    if (maxNesting > 0) {
+      const depth = estimateMaxBraceDepth(body);
+      if (depth > maxNesting) {
+        const sev = severityFromLevel(effectiveRuleLevel(lint, 'jsp.scriptlet.nested-control-flow', 'info'));
+        if (sev) {
+          const start = r.jspStartOffset;
+          const end = Math.min(r.jspStartOffset + 3, r.jspEndOffset);
+          out.push({
+            message: `This scriptlet appears deeply nested (brace depth ~${depth}, limit: ${maxNesting}). Consider simplifying control flow.`,
+            severity: sev,
+            range: { start: doc.positionAt(start), end: doc.positionAt(end) },
+            source: 'jsp-lang(lint)',
+            code: 'jsp.scriptlet.nested-control-flow',
+          });
+        }
+      }
+    }
+  }
 }
 
 export function validateJspLinting(args: {
@@ -218,15 +339,22 @@ export function validateJspLinting(args: {
   javaRegions: JavaRegion[];
   workspaceRoots: string[];
   docFsPath?: string;
+  lintConfig?: LintConfig;
 }): Diagnostic[] {
   const { doc, javaRegions, workspaceRoots, docFsPath } = args;
+
+  const lint = args.lintConfig ?? DEFAULT_LINT_CONFIG;
+  if (!lint.enable) {
+    return [];
+  }
 
   const jspText = doc.getText();
   const out: Diagnostic[] = [];
 
-  pushScriptletPresenceDiagnostic(doc, javaRegions, out);
-  pushDirectiveTaglibMissingAttrDiagnostics(doc, jspText, out);
-  pushIncludeUnresolvableDiagnostics(doc, jspText, out, { docFsPath, workspaceRoots });
+  pushScriptletPresenceDiagnostic(doc, javaRegions, out, lint);
+  pushScriptletCountAndSizeDiagnostics(doc, javaRegions, out, lint);
+  pushDirectiveTaglibMissingAttrDiagnostics(doc, jspText, out, lint);
+  pushIncludeUnresolvableDiagnostics(doc, jspText, out, { docFsPath, workspaceRoots }, lint);
 
   return out;
 }

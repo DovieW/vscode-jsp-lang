@@ -38,6 +38,16 @@ When editing `.jsp` files, the extension provides:
   - boolean attribute value completion (`true` / `false`) when the TLD declares a boolean type
   - hover docs for tag/attribute descriptions (from the TLD)
   - warning diagnostics for unknown prefixes/tags/attributes
+
+- JSP linting (Feature 06):
+  - info/warning diagnostics for scriptlet-heavy pages (presence/count/size/nesting heuristics)
+  - warnings for malformed `<%@ taglib %>` directives (missing `prefix` / `uri`)
+  - warnings for unresolvable include targets (`<%@ include file="..." %>`, `<jsp:include page="..." />`)
+  - optional Java *syntax* diagnostics inside scriptlets (no type checking)
+
+- Quick fixes (Code Actions) for a few safe cases:
+  - add missing `prefix`/`uri` attributes in `<%@ taglib ... %>`
+  - add a `<%@ taglib prefix="..." uri="" %>` skeleton for unknown taglib prefixes
 - Taglib-aware navigation & refactoring (Feature 05, MVP):
   - Go to Definition for `<prefix:tag>` and tag attributes (jumps into the backing `.tld` file when available)
   - Find All References for `<prefix:tag>` (workspace scan of `.jsp/.jspf/.tag`)
@@ -112,7 +122,7 @@ In particular, it does not include:
 - JavaScript IntelliSense/diagnostics for `<script>` blocks (planned)
 - Full Java IntelliSense/diagnostics for JSP scriptlets (`<% ... %>`) (planned)
 - Java-aware go to definition / references / rename for code inside scriptlets (this requires Feature 2’s Java semantic model)
-- Formatting or code actions
+- Formatting (document/range)
 - A full snippet pack (the only snippets currently provided are small scriptlet/directive starters via completion)
 - Refactoring tools beyond the safe, file-local taglib prefix rename
 - A full DAP proxy adapter for JSP debugging (current implementation is tracker-based and best-effort)

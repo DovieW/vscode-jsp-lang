@@ -57,6 +57,62 @@
                     ],
                     "description": "Glob patterns (workspace-relative) used to find .jar files to scan for META-INF/*.tld when jsp.taglibs.enableJarScanning is true."
                 },
+                "jsp.lint.enable": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Enable JSP linting diagnostics (scriptlet heuristics, directive validation, include resolution)."
+                },
+                "jsp.lint.rules": {
+                    "type": "object",
+                    "default": {
+                        "jsp.scriptlet.present": "info",
+                        "jsp.scriptlet.too-many": "info",
+                        "jsp.scriptlet.too-large": "info",
+                        "jsp.scriptlet.nested-control-flow": "info",
+                        "jsp.directive.taglib-missing-prefix": "warning",
+                        "jsp.directive.taglib-missing-uri": "warning",
+                        "jsp.include.unresolvable": "warning",
+                        "jsp.tag.missing-required-attribute": "warning",
+                        "jsp.taglib.unknown-prefix": "warning",
+                        "jsp.taglib.unresolved-tld": "warning",
+                        "jsp.tag.unknown-tag": "warning",
+                        "jsp.tag.unknown-attribute": "warning",
+                        "jsp.java.syntax": "error"
+                    },
+                    "additionalProperties": {
+                        "type": "string",
+                        "enum": [
+                            "off",
+                            "info",
+                            "warning",
+                            "error"
+                        ]
+                    },
+                    "description": "Rule id -> severity level. Use 'off' to disable a rule."
+                },
+                "jsp.lint.scriptlets.maxCount": {
+                    "type": "number",
+                    "default": 5,
+                    "minimum": 0,
+                    "description": "Warn/Info when a file contains more than this many scriptlet blocks (<% ... %>). Set to 0 to disable the rule."
+                },
+                "jsp.lint.scriptlets.maxLines": {
+                    "type": "number",
+                    "default": 30,
+                    "minimum": 0,
+                    "description": "Warn/Info when a single scriptlet block exceeds this many lines. Set to 0 to disable the rule."
+                },
+                "jsp.lint.scriptlets.maxNesting": {
+                    "type": "number",
+                    "default": 3,
+                    "minimum": 0,
+                    "description": "Warn/Info when a scriptlet appears deeply nested (brace depth heuristic). Set to 0 to disable the rule."
+                },
+                "jsp.lint.java.enableSyntaxDiagnostics": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Experimental: parse Java inside scriptlets and surface syntax errors as JSP diagnostics (no type checking)."
+                },
                 "jsp.debug.stackFrameRewrite.enabled": {
                     "type": "boolean",
                     "default": true,
@@ -159,6 +215,7 @@
     "dependencies": {
         "fast-glob": "^3.3.3",
         "fast-xml-parser": "^4.5.3",
+        "java-parser": "^3.0.1",
         "vscode-css-languageservice": "^6.3.0",
         "vscode-html-languageservice": "^5.3.0",
         "vscode-languageclient": "^9.0.1",
