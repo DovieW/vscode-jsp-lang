@@ -6,17 +6,24 @@ import {
   DidChangeWatchedFilesNotification,
   type Diagnostic,
   DiagnosticSeverity,
+  type DocumentSymbol,
   type Hover,
   type HoverParams,
   type InitializeParams,
   type InitializeResult,
   InsertTextFormat,
+  type Location,
   MarkupKind,
   type InsertReplaceEdit,
   type Range,
+  type ReferenceParams,
+  type RenameParams,
+  type SymbolInformation,
+  SymbolKind,
   type TextDocumentChangeEvent,
   TextDocumentSyncKind,
   type TextEdit,
+  type WorkspaceEdit,
 } from 'vscode-languageserver';
 import { fileURLToPath } from 'node:url';
 import {
@@ -40,6 +47,11 @@ import { parseTaglibDirectives } from './jsp/taglibs/parseTaglibDirectives';
 import { getStartTagContext } from './jsp/taglibs/startTagContext';
 import type { TaglibIndex } from './jsp/taglibs/types';
 import { validateTaglibUsageInJsp } from './jsp/taglibs/validateTaglibUsage';
+import {
+  buildPrefixRenameEdits,
+  findTaglibDefinitionLocation,
+  scanTagUsagesInWorkspace,
+} from './jsp/navigation/taglibNavigation';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
@@ -775,11 +787,234 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
         triggerCharacters: ['<', ' ', ':', '/', '"', "'", '='],
       },
       hoverProvider: true,
+      // Feature 05 (Milestone 1–2, taglib/navigation MVP)
+      definitionProvider: true,
+      referencesProvider: true,
+      renameProvider: true,
+      documentSymbolProvider: true,
     },
   };
 
   connection.console.log(`JSP language server initialized (root: ${params.rootUri ?? 'n/a'})`);
   return result;
+});
+
+function getTaglibNameAndAttrAtOffset(
+  jspText: string,
+  offset: number,
+):
+  | {
+      nameStart: number;
+      nameEnd: number;
+      prefix: string;
+      localName: string;
+      attrNameAtCursor?: { name: string; start: number; end: number };
+    }
+  | undefined {
+  // Must be within a tag.
+  const lt = jspText.lastIndexOf('<', Math.max(0, offset));
+  if (lt === -1) return undefined;
+  const gtBefore = jspText.lastIndexOf('>', Math.max(0, offset));
+  if (gtBefore > lt) return undefined;
+  const tagEnd = jspText.indexOf('>', lt);
+  if (tagEnd === -1 || offset > tagEnd) return undefined;
+
+  // Skip JSP blocks like `<% ... %>` and processing instructions.
+  const next = jspText[lt + 1] ?? '';
+  if (next === '%' || next === '!' || next === '?') return undefined;
+
+  // Parse tag name.
+  let i = lt + 1;
+  while (i < jspText.length && /\s/.test(jspText[i] ?? '')) i++;
+  if (jspText[i] === '/') {
+    i++;
+    while (i < jspText.length && /\s/.test(jspText[i] ?? '')) i++;
+  }
+  const nameStart = i;
+  while (i < jspText.length && /[A-Za-z0-9_.:-]/.test(jspText[i] ?? '')) i++;
+  const nameEnd = i;
+  const fullName = jspText.slice(nameStart, nameEnd);
+  const colon = fullName.indexOf(':');
+  if (colon === -1) return undefined;
+
+  const prefix = fullName.slice(0, colon);
+  const localName = fullName.slice(colon + 1);
+
+  // Attribute under cursor?
+  const between = jspText.slice(nameEnd, tagEnd);
+  const rel = offset - nameEnd;
+  let attrNameAtCursor: { name: string; start: number; end: number } | undefined;
+  if (rel >= 0 && rel <= between.length) {
+    const attrRe = /(?:^|\s)([A-Za-z_][\w:.-]*)(?=\s*=)/g;
+    let m: RegExpExecArray | null;
+    while ((m = attrRe.exec(between))) {
+      const attrName = m[1];
+      const attrStartRel = m.index + (m[0].length - attrName.length);
+      const attrEndRel = attrStartRel + attrName.length;
+      if (rel >= attrStartRel && rel <= attrEndRel) {
+        const start = nameEnd + attrStartRel;
+        const end = nameEnd + attrEndRel;
+        attrNameAtCursor = { name: attrName, start, end };
+        break;
+      }
+    }
+  }
+
+  return { nameStart, nameEnd, prefix, localName, attrNameAtCursor };
+}
+
+function parseTaglibPrefixToUri(jspText: string): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const d of parseTaglibDirectives(jspText)) {
+    m.set(d.prefix, d.uri);
+  }
+  return m;
+}
+
+function buildDirectiveSymbols(doc: TextDocument): DocumentSymbol[] {
+  const text = doc.getText();
+  const symbols: DocumentSymbol[] = [];
+  const re = /<%@\s*(page|include|taglib)\b([\s\S]*?)%>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    const kind = (m[1] ?? '').toLowerCase();
+    const body = m[2] ?? '';
+    const startOffset = m.index;
+    const endOffset = m.index + m[0].length;
+
+    let name = `@${kind}`;
+    if (kind === 'taglib') {
+      const pm = /\bprefix\s*=\s*(["'])([^"']+)\1/i.exec(body);
+      const um = /\buri\s*=\s*(["'])([^"']+)\1/i.exec(body);
+      const prefix = pm?.[2];
+      const uri = um?.[2];
+      if (prefix && uri) name = `@taglib ${prefix} → ${uri}`;
+      else if (prefix) name = `@taglib ${prefix}`;
+    }
+    if (kind === 'include') {
+      const fm = /\bfile\s*=\s*(["'])([^"']+)\1/i.exec(body);
+      const file = fm?.[2];
+      if (file) name = `@include ${file}`;
+    }
+
+    symbols.push({
+      name,
+      kind: SymbolKind.Namespace,
+      range: { start: doc.positionAt(startOffset), end: doc.positionAt(endOffset) },
+      selectionRange: { start: doc.positionAt(startOffset), end: doc.positionAt(endOffset) },
+      children: [],
+    });
+  }
+  return symbols;
+}
+
+connection.onDefinition(async (params): Promise<Location | Location[] | null> => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) {
+    return null;
+  }
+
+  const tldIndex = await ensureTaglibIndex();
+  if (!tldIndex) {
+    return null;
+  }
+
+  const jspText = doc.getText();
+  const offset = doc.offsetAt(params.position);
+  const hit = getTaglibNameAndAttrAtOffset(jspText, offset);
+  if (!hit) {
+    return null;
+  }
+
+  const prefixToUri = parseTaglibPrefixToUri(jspText);
+  const uri = prefixToUri.get(hit.prefix);
+  if (!uri) {
+    return null;
+  }
+
+  const taglib = tldIndex.byUri.get(uri);
+  if (!taglib) {
+    return null;
+  }
+
+  const loc = findTaglibDefinitionLocation({
+    tldFilePath: taglib.source,
+    tagName: hit.localName,
+    attributeName: hit.attrNameAtCursor?.name,
+  });
+
+  return loc ? (loc as Location) : null;
+});
+
+connection.onReferences(async (params: ReferenceParams): Promise<Location[]> => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) {
+    return [];
+  }
+
+  const jspText = doc.getText();
+  const offset = doc.offsetAt(params.position);
+  const hit = getTaglibNameAndAttrAtOffset(jspText, offset);
+  if (!hit) {
+    return [];
+  }
+
+  // Best-effort: treat references as "all occurrences of this <prefix:tag> in the workspace".
+  const refs = await scanTagUsagesInWorkspace({
+    roots: workspaceRoots,
+    prefix: hit.prefix,
+    tagName: hit.localName,
+    maxFiles: 5_000,
+  });
+
+  return refs as unknown as Location[];
+});
+
+connection.onRenameRequest(async (params: RenameParams): Promise<WorkspaceEdit | null> => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) {
+    return null;
+  }
+
+  const newName = params.newName?.trim();
+  if (!newName) {
+    return null;
+  }
+
+  const jspText = doc.getText();
+  const offset = doc.offsetAt(params.position);
+  const hit = getTaglibNameAndAttrAtOffset(jspText, offset);
+  if (!hit) {
+    return null;
+  }
+
+  // For now: only support renaming taglib prefixes file-locally.
+  const oldPrefix = hit.prefix;
+
+  // Require that the prefix is actually declared in this document.
+  const prefixToUri = parseTaglibPrefixToUri(jspText);
+  if (!prefixToUri.has(oldPrefix)) {
+    return null;
+  }
+
+  const edits = buildPrefixRenameEdits(doc, oldPrefix, newName);
+  if (!edits.length) {
+    return null;
+  }
+
+  return {
+    changes: {
+      [doc.uri]: edits,
+    },
+  };
+});
+
+connection.onDocumentSymbol((params): Array<DocumentSymbol> | Array<SymbolInformation> => {
+  const doc = documents.get(params.textDocument.uri);
+  if (!doc) {
+    return [];
+  }
+  return buildDirectiveSymbols(doc);
 });
 
 connection.onInitialized(() => {

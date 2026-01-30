@@ -7,6 +7,8 @@ This extension provides JSP support for VS Code:
 - CSS language features inside `<style>...</style>` and inline `style="..."` attributes (completion + hover + diagnostics)
 - Taglib support (custom/framework JSP tags) when a matching `.tld` exists in the workspace:
     - tag/attribute completions, hover docs, and warning diagnostics
+- Taglib-aware navigation (MVP): go to definition, find references, and safe file-local prefix rename
+- Experimental Java debugging integration for Tomcat/Jasper-generated JSP servlet sources (stack frame rewrite + breakpoint translation)
 
 It does **not** (yet) implement JavaScript language features inside `<script>` blocks, nor Java IntelliSense for JSP scriptlets.
 

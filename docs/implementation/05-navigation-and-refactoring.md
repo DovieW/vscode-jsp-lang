@@ -204,3 +204,19 @@ Provide a useful outline for JSP:
 - Jar-based TLDs complicate “definition locations” unless you provide a readable virtual document.
 - Rename is dangerous without a real parser; keep renames conservative.
 - Java rename/navigation is only as good as the classpath/project model (Feature 2).
+
+---
+
+## Current status in this repo (Milestones 1–2 ✅ for taglibs; Java navigation ❌)
+
+We currently ship an MVP implementation of **Feature 05 for taglibs** via the bundled language server:
+
+- **Go to Definition** on `<prefix:tag>` and known tag attribute names jumps into the backing `.tld` file (best-effort location mapping).
+- **Find All References** on `<prefix:tag>` scans the workspace for usages in `.jsp/.jspf/.tag` files.
+- **Rename** supports safe, file-local **taglib prefix rename** (updates the `<%@ taglib prefix=... %>` directive and `<prefix:...>` usages in that file).
+- **Document Symbols** (outline) lists common directives (`page`, `include`, `taglib`).
+
+What’s still out of scope / not implemented:
+
+- Java-aware definition/references/rename for identifiers inside scriptlets (Feature 2 prerequisite)
+- Cross-project rename of tag names or attributes (intentionally avoided)

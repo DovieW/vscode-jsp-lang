@@ -38,6 +38,11 @@ When editing `.jsp` files, the extension provides:
   - boolean attribute value completion (`true` / `false`) when the TLD declares a boolean type
   - hover docs for tag/attribute descriptions (from the TLD)
   - warning diagnostics for unknown prefixes/tags/attributes
+- Taglib-aware navigation & refactoring (Feature 05, MVP):
+  - Go to Definition for `<prefix:tag>` and tag attributes (jumps into the backing `.tld` file when available)
+  - Find All References for `<prefix:tag>` (workspace scan of `.jsp/.jspf/.tag`)
+  - Rename taglib **prefix** within a single file (updates the `<%@ taglib prefix=... %>` directive and `<prefix:...>` usages)
+  - Document Symbols (outline) for common directives (`page`, `include`, `taglib`)
 - JSP scriptlet/directive **MVP completions**:
   - implicit object identifier completion inside `<% ... %>`, `<%= ... %>`, `<%! ... %>`
   - snippet completions when starting `<%` / `<%=` / `<%!` / `<%@`
@@ -47,6 +52,15 @@ Notes:
 - HTML diagnostics are intentionally conservative to avoid false positives caused by JSP constructs.
 - CSS features work by extracting CSS regions from a same-length HTML projection of the JSP file.
 - Taglib discovery is workspace-based (it scans for `**/*.tld`). JAR-provided TLDs are not supported yet.
+
+### Debugging integration (experimental)
+
+When debugging Java (for example when attaching to a Tomcat JVM), the extension provides **best-effort** JSP debugging help:
+
+- rewrite Java stack frames that point at Tomcat/Jasper generated `*_jsp.java` sources back to `.jsp/.jspf/.tag` files
+- translate breakpoints set in `.jsp/.jspf/.tag` files into breakpoints in the generated servlet `.java` sources (when mapping markers are available)
+
+This is intentionally Tomcat/Jasper-focused and depends on generated servlet sources being accessible.
 
 Highlighted JSP constructs include:
 
@@ -96,11 +110,11 @@ In particular, it does not include:
 
 - JavaScript IntelliSense/diagnostics for `<script>` blocks (planned)
 - Full Java IntelliSense/diagnostics for JSP scriptlets (`<% ... %>`) (planned)
-- Go to definition / references / rename / symbol search
+- Java-aware go to definition / references / rename for code inside scriptlets (this requires Feature 2’s Java semantic model)
 - Formatting or code actions
 - A full snippet pack (the only snippets currently provided are small scriptlet/directive starters via completion)
-- Refactoring tools
-- Debugging support
+- Refactoring tools beyond the safe, file-local taglib prefix rename
+- A full DAP proxy adapter for JSP debugging (current implementation is tracker-based and best-effort)
 
 ### Confirming the “Requirements” list you received
 
