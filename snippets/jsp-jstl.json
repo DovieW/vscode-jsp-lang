@@ -1,0 +1,34 @@
+{
+    "JSTL forEach": {
+        "prefix": "jstl-forEach",
+        "body": [
+            "<c:forEach var=\"${1:item}\" items=\"${2:items}\">",
+            "\t$0",
+            "</c:forEach>"
+        ],
+        "description": "Insert a JSTL c:forEach block"
+    },
+    "JSTL if": {
+        "prefix": "jstl-if",
+        "body": [
+            "<c:if test=\"${1:test}\">",
+            "\t$0",
+            "</c:if>"
+        ],
+        "description": "Insert a JSTL c:if block"
+    },
+    "JSTL choose/when/otherwise": {
+        "prefix": "jstl-choose",
+        "body": [
+            "<c:choose>",
+            "\t<c:when test=\"${1:test}\">",
+            "\t\t$0",
+            "\t</c:when>",
+            "\t<c:otherwise>",
+            "\t\t${2:}",
+            "\t</c:otherwise>",
+            "</c:choose>"
+        ],
+        "description": "Insert a JSTL c:choose block"
+    }
+}

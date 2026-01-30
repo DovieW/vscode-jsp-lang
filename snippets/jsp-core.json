@@ -1,0 +1,62 @@
+{
+    "JSP Page Directive": {
+        "prefix": "jsp-page",
+        "body": [
+            "<%@ page ${1:contentType=\"text/html; charset=UTF-8\"} ${2:pageEncoding=\"UTF-8\"} %>"
+        ],
+        "description": "Insert a JSP page directive"
+    },
+    "JSP Taglib Directive": {
+        "prefix": "jsp-taglib",
+        "body": [
+            "<%@ taglib prefix=\"${1:prefix}\" uri=\"${2:uri}\" %>"
+        ],
+        "description": "Insert a JSP taglib directive"
+    },
+    "JSP Include Directive": {
+        "prefix": "jsp-include",
+        "body": [
+            "<%@ include file=\"${1:/WEB-INF/}\" %>"
+        ],
+        "description": "Insert a JSP include directive"
+    },
+    "JSP Scriptlet Block": {
+        "prefix": "jsp-scriptlet",
+        "body": [
+            "<%",
+            "\t$0",
+            "%>"
+        ],
+        "description": "Insert a JSP scriptlet block"
+    },
+    "JSP Expression": {
+        "prefix": "jsp-expr",
+        "body": [
+            "<%= ${0:expression} %>"
+        ],
+        "description": "Insert a JSP expression"
+    },
+    "JSP Declaration": {
+        "prefix": "jsp-decl",
+        "body": [
+            "<%!",
+            "\t$0",
+            "%>"
+        ],
+        "description": "Insert a JSP declaration block"
+    },
+    "JSP EL Param": {
+        "prefix": "jsp-param",
+        "body": [
+            "${param.${1:name}}"
+        ],
+        "description": "Insert an EL param reference"
+    },
+    "JSP out.print": {
+        "prefix": "jsp-out",
+        "body": [
+            "out.print(${1:value});$0"
+        ],
+        "description": "Insert an out.print() call"
+    }
+}

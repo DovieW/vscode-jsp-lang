@@ -210,6 +210,20 @@
                     "meta.embedded.block.java": "java"
                 }
             }
+        ],
+        "snippets": [
+            {
+                "language": "jsp",
+                "path": "./snippets/jsp-core.json"
+            },
+            {
+                "language": "jsp",
+                "path": "./snippets/jsp-jstl.json"
+            },
+            {
+                "language": "jsp",
+                "path": "./snippets/jsp-struts1.json"
+            }
         ]
     },
     "dependencies": {

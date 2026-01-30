@@ -1,0 +1,25 @@
+{
+    "Struts HTML Form": {
+        "prefix": "struts-form",
+        "body": [
+            "<html:form action=\"${1:/action}\" method=\"${2:post}\">",
+            "\t$0",
+            "</html:form>"
+        ],
+        "description": "Insert a Struts 1 html:form block"
+    },
+    "Struts HTML Text": {
+        "prefix": "struts-text",
+        "body": [
+            "<html:text property=\"${1:property}\" />"
+        ],
+        "description": "Insert a Struts 1 html:text input"
+    },
+    "Struts HTML Submit": {
+        "prefix": "struts-submit",
+        "body": [
+            "<html:submit value=\"${1:Submit}\" />"
+        ],
+        "description": "Insert a Struts 1 html:submit button"
+    }
+}
