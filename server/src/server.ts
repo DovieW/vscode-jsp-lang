@@ -25,7 +25,9 @@ import {
   type TextEdit,
   type WorkspaceEdit,
 } from 'vscode-languageserver';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import * as fsSync from 'node:fs';
+import * as path from 'node:path';
 import {
   createConnection,
   ProposedFeatures,
@@ -49,8 +51,11 @@ import type { TaglibIndex } from './jsp/taglibs/types';
 import { validateTaglibUsageInJsp } from './jsp/taglibs/validateTaglibUsage';
 import {
   buildPrefixRenameEdits,
+  findIncludePathAtOffset,
   findTaglibDefinitionLocation,
+  findTaglibDirectivePrefixValueAtOffset,
   scanTagUsagesInWorkspace,
+  scanTagPrefixUsagesInText,
 } from './jsp/navigation/taglibNavigation';
 
 const connection = createConnection(ProposedFeatures.all);
@@ -911,6 +916,42 @@ function parseTaglibPrefixToUri(jspText: string): Map<string, string> {
   return m;
 }
 
+function resolveIncludeTargetToFileUri(doc: TextDocument, includePath: string): string | undefined {
+  const docFsPath = uriToFsPath(doc.uri);
+  if (!docFsPath || !includePath) {
+    return undefined;
+  }
+
+  const docDir = path.dirname(docFsPath);
+
+  // JSP include paths often start with '/', which is typically "web-root relative", not filesystem-absolute.
+  if (includePath.startsWith('/')) {
+    const rel = includePath.replace(/^\/+/, '');
+
+    for (const root of workspaceRoots) {
+      const candidate = path.join(root, rel);
+      if (fsSync.existsSync(candidate)) {
+        return pathToFileURL(candidate).toString();
+      }
+    }
+
+    // Fallback: treat as relative to the current file's directory.
+    const fallback = path.join(docDir, rel);
+    if (fsSync.existsSync(fallback)) {
+      return pathToFileURL(fallback).toString();
+    }
+
+    return undefined;
+  }
+
+  const candidate = path.resolve(docDir, includePath);
+  if (fsSync.existsSync(candidate)) {
+    return pathToFileURL(candidate).toString();
+  }
+
+  return undefined;
+}
+
 function buildDirectiveSymbols(doc: TextDocument): DocumentSymbol[] {
   const text = doc.getText();
   const symbols: DocumentSymbol[] = [];
@@ -954,36 +995,50 @@ connection.onDefinition(async (params): Promise<Location | Location[] | null> =>
     return null;
   }
 
-  const tldIndex = await ensureTaglibIndex();
-  if (!tldIndex) {
-    return null;
-  }
-
   const jspText = doc.getText();
   const offset = doc.offsetAt(params.position);
+
+  // 1) Taglib navigation: <prefix:tag> and known attributes.
   const hit = getTaglibNameAndAttrAtOffset(jspText, offset);
-  if (!hit) {
-    return null;
+  if (hit) {
+    const tldIndex = await ensureTaglibIndex();
+    if (!tldIndex) {
+      return null;
+    }
+
+    const prefixToUri = parseTaglibPrefixToUri(jspText);
+    const uri = prefixToUri.get(hit.prefix);
+    if (!uri) {
+      return null;
+    }
+
+    const taglib = tldIndex.byUri.get(uri);
+    if (!taglib) {
+      return null;
+    }
+
+    const loc = findTaglibDefinitionLocation({
+      tldFilePath: taglib.source,
+      tagName: hit.localName,
+      attributeName: hit.attrNameAtCursor?.name,
+    });
+
+    return loc ? (loc as Location) : null;
   }
 
-  const prefixToUri = parseTaglibPrefixToUri(jspText);
-  const uri = prefixToUri.get(hit.prefix);
-  if (!uri) {
-    return null;
+  // 2) Include navigation: <%@ include file="..." %> and <jsp:include page="..." />
+  const includeHit = findIncludePathAtOffset(jspText, offset);
+  if (includeHit) {
+    const targetUri = resolveIncludeTargetToFileUri(doc, includeHit.path);
+    if (targetUri) {
+      return {
+        uri: targetUri,
+        range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+      };
+    }
   }
 
-  const taglib = tldIndex.byUri.get(uri);
-  if (!taglib) {
-    return null;
-  }
-
-  const loc = findTaglibDefinitionLocation({
-    tldFilePath: taglib.source,
-    tagName: hit.localName,
-    attributeName: hit.attrNameAtCursor?.name,
-  });
-
-  return loc ? (loc as Location) : null;
+  return null;
 });
 
 connection.onReferences(async (params: ReferenceParams): Promise<Location[]> => {
@@ -995,19 +1050,38 @@ connection.onReferences(async (params: ReferenceParams): Promise<Location[]> => 
   const jspText = doc.getText();
   const offset = doc.offsetAt(params.position);
   const hit = getTaglibNameAndAttrAtOffset(jspText, offset);
-  if (!hit) {
+  if (hit) {
+    // Best-effort: treat references as "all occurrences of this <prefix:tag> in the workspace".
+    const refs = await scanTagUsagesInWorkspace({
+      roots: workspaceRoots,
+      prefix: hit.prefix,
+      tagName: hit.localName,
+      maxFiles: 5_000,
+    });
+
+    return refs as unknown as Location[];
+  }
+
+  // File-local references: when invoked on the taglib directive prefix value.
+  const dirHit = findTaglibDirectivePrefixValueAtOffset(jspText, offset);
+  if (!dirHit) {
     return [];
   }
 
-  // Best-effort: treat references as "all occurrences of this <prefix:tag> in the workspace".
-  const refs = await scanTagUsagesInWorkspace({
-    roots: workspaceRoots,
-    prefix: hit.prefix,
-    tagName: hit.localName,
-    maxFiles: 5_000,
-  });
+  const spans = scanTagPrefixUsagesInText(jspText, dirHit.prefix);
+  const out: Location[] = spans.map((s) => ({
+    uri: doc.uri,
+    range: { start: doc.positionAt(s.startOffset), end: doc.positionAt(s.endOffset) },
+  }));
 
-  return refs as unknown as Location[];
+  if (params.context?.includeDeclaration) {
+    out.unshift({
+      uri: doc.uri,
+      range: { start: doc.positionAt(dirHit.startOffset), end: doc.positionAt(dirHit.endOffset) },
+    });
+  }
+
+  return out;
 });
 
 connection.onRenameRequest(async (params: RenameParams): Promise<WorkspaceEdit | null> => {
@@ -1023,13 +1097,24 @@ connection.onRenameRequest(async (params: RenameParams): Promise<WorkspaceEdit |
 
   const jspText = doc.getText();
   const offset = doc.offsetAt(params.position);
-  const hit = getTaglibNameAndAttrAtOffset(jspText, offset);
-  if (!hit) {
-    return null;
-  }
 
   // For now: only support renaming taglib prefixes file-locally.
-  const oldPrefix = hit.prefix;
+  // We allow triggering rename either on <prefix:tag> usage OR on the directive prefix value itself.
+  let oldPrefix: string | undefined;
+
+  const hit = getTaglibNameAndAttrAtOffset(jspText, offset);
+  if (hit) {
+    oldPrefix = hit.prefix;
+  } else {
+    const dirHit = findTaglibDirectivePrefixValueAtOffset(jspText, offset);
+    if (dirHit) {
+      oldPrefix = dirHit.prefix;
+    }
+  }
+
+  if (!oldPrefix) {
+    return null;
+  }
 
   // Require that the prefix is actually declared in this document.
   const prefixToUri = parseTaglibPrefixToUri(jspText);

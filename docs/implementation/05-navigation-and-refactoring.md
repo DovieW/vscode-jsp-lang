@@ -212,7 +212,9 @@ Provide a useful outline for JSP:
 We currently ship an MVP implementation of **Feature 05 for taglibs** via the bundled language server:
 
 - **Go to Definition** on `<prefix:tag>` and known tag attribute names jumps into the backing `.tld` file (best-effort location mapping).
+- **Go to Definition** on include targets works (best-effort) for `<%@ include file="..." %>` and `<jsp:include page="..." />` when the target file can be resolved in the workspace.
 - **Find All References** on `<prefix:tag>` scans the workspace for usages in `.jsp/.jspf/.tag` files.
+- **Find All References** on a taglib directive prefix value (e.g. `prefix="c"`) returns file-local usages of `<c:...>` / `</c:...>` in that same document.
 - **Rename** supports safe, file-local **taglib prefix rename** (updates the `<%@ taglib prefix=... %>` directive and `<prefix:...>` usages in that file).
 - **Document Symbols** (outline) lists common directives (`page`, `include`, `taglib`).
 

@@ -5,8 +5,11 @@ import { TextDocument } from 'vscode-languageserver-textdocument';
 
 import {
   buildPrefixRenameEdits,
+  findIncludePathAtOffset,
   findTaglibDefinitionLocation,
+  findTaglibDirectivePrefixValueAtOffset,
   scanTagUsagesInWorkspace,
+  scanTagPrefixUsagesInText,
 } from '../server/src/jsp/navigation/taglibNavigation';
 
 const FIXTURE_ROOT = path.join(__dirname, '..', 'samples', 'feature03-tests');
@@ -68,6 +71,57 @@ describe('Feature 05 (taglib navigation + rename)', () => {
 
     const anyInTagnameFixture = refs.some((r) => r.uri.endsWith('/taglibs-tagname-completion.jsp'));
     expect(anyInTagnameFixture).toBe(true);
+  });
+
+  test('findTaglibDirectivePrefixValueAtOffset detects prefix value when cursor is inside <%@ taglib %>', () => {
+    const jsp = [
+      '<%@ taglib prefix="c" uri="http://example.com/tld/demo" %>',
+      '<c:if test="true">',
+      '</c:if>',
+    ].join('\n');
+
+    const offsetInsidePrefix = jsp.indexOf('prefix="c"') + 'prefix="'.length;
+    const hit = findTaglibDirectivePrefixValueAtOffset(jsp, offsetInsidePrefix);
+
+    expect(hit).toBeTruthy();
+    expect(hit!.prefix).toBe('c');
+    expect(jsp.slice(hit!.startOffset, hit!.endOffset)).toBe('c');
+  });
+
+  test('scanTagPrefixUsagesInText finds file-local <prefix: occurrences (not directive values)', () => {
+    const jsp = [
+      '<%@ taglib prefix="c" uri="http://example.com/tld/demo" %>',
+      '<c:if test="true">',
+      '  <c:out value="x" />',
+      '</c:if>',
+    ].join('\n');
+
+    const spans = scanTagPrefixUsagesInText(jsp, 'c');
+
+    // Expect 3 usages: <c:if, <c:out, </c:if
+    expect(spans.length).toBe(3);
+    for (const s of spans) {
+      expect(jsp.slice(s.startOffset, s.endOffset)).toBe('c');
+    }
+  });
+
+  test('findIncludePathAtOffset detects <%@ include file=... %> and <jsp:include page=...>', () => {
+    const jsp = [
+      '<%@ include file="/partials/header.jspf" %>',
+      '<jsp:include page="other.jsp" />',
+    ].join('\n');
+
+    const dirOffset = jsp.indexOf('header.jspf');
+    const dirHit = findIncludePathAtOffset(jsp, dirOffset);
+    expect(dirHit).toBeTruthy();
+    expect(dirHit!.kind).toBe('directive');
+    expect(dirHit!.path).toBe('/partials/header.jspf');
+
+    const tagOffset = jsp.indexOf('other.jsp');
+    const tagHit = findIncludePathAtOffset(jsp, tagOffset);
+    expect(tagHit).toBeTruthy();
+    expect(tagHit!.kind).toBe('jsp-include');
+    expect(tagHit!.path).toBe('other.jsp');
   });
 });
 

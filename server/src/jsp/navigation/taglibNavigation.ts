@@ -78,6 +78,149 @@ export function buildPrefixRenameEdits(
   return edits;
 }
 
+export type OffsetSpan = {
+  startOffset: number;
+  endOffset: number;
+};
+
+/**
+ * If the given offset is within a taglib directive's prefix value, returns that prefix and its span.
+ *
+ * Example:
+ *   <%@ taglib prefix="c" uri="..." %>
+ */
+export function findTaglibDirectivePrefixValueAtOffset(
+  jspText: string,
+  offset: number,
+): { prefix: string; startOffset: number; endOffset: number } | null {
+  const dirRe = /<%@\s*taglib\b([\s\S]*?)%>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = dirRe.exec(jspText))) {
+    const full = m[0];
+    const body = m[1] ?? '';
+    const startOffset = m.index;
+    const endOffset = startOffset + full.length;
+    if (offset < startOffset || offset > endOffset) {
+      continue;
+    }
+
+    const bodyStart = startOffset + full.indexOf(body);
+    const prefixRe = /\bprefix\s*=\s*("([^"]*)"|'([^']*)')/i;
+    const pm = prefixRe.exec(body);
+    if (!pm) {
+      return null;
+    }
+
+    const prefix = (pm[2] ?? pm[3] ?? '').trim();
+    const prefixStartInBody = (pm.index ?? 0) + pm[0].indexOf(prefix);
+    const prefixStart = bodyStart + prefixStartInBody;
+    const prefixEnd = prefixStart + prefix.length;
+
+    if (offset >= prefixStart && offset <= prefixEnd) {
+      return { prefix, startOffset: prefixStart, endOffset: prefixEnd };
+    }
+    return null;
+  }
+  return null;
+}
+
+/**
+ * Finds file-local tag prefix usages like:
+ *   <c:if ...> or </c:if>
+ * Returns spans that cover only the prefix (not the colon).
+ */
+export function scanTagPrefixUsagesInText(jspText: string, prefix: string): OffsetSpan[] {
+  if (!jspText || !prefix) {
+    return [];
+  }
+
+  const out: OffsetSpan[] = [];
+  const re = new RegExp(`<\\s*/?\\s*${escapeRegExp(prefix)}\\s*:`, 'g');
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(jspText))) {
+    const matchText = m[0];
+    const prefixStart = m.index + matchText.search(new RegExp(escapeRegExp(prefix)));
+    const prefixEnd = prefixStart + prefix.length;
+    out.push({ startOffset: prefixStart, endOffset: prefixEnd });
+  }
+  return out;
+}
+
+export type IncludePathHit = {
+  kind: 'directive' | 'jsp-include';
+  path: string;
+  startOffset: number;
+  endOffset: number;
+};
+
+/**
+ * Best-effort include navigation hit-testing.
+ * Supports:
+ *  - <%@ include file="..." %>
+ *  - <jsp:include page="..." />
+ */
+export function findIncludePathAtOffset(jspText: string, offset: number): IncludePathHit | null {
+  // 1) Static include directive: <%@ include file="..." %>
+  const includeDirRe = /<%@\s*include\b([\s\S]*?)%>/gi;
+  let m: RegExpExecArray | null;
+  while ((m = includeDirRe.exec(jspText))) {
+    const full = m[0];
+    const body = m[1] ?? '';
+    const start = m.index;
+    const end = start + full.length;
+    if (offset < start || offset > end) {
+      continue;
+    }
+
+    const bodyStart = start + full.indexOf(body);
+    const fileRe = /\bfile\s*=\s*("([^"]*)"|'([^']*)')/i;
+    const fm = fileRe.exec(body);
+    if (!fm) {
+      return null;
+    }
+
+    const p = (fm[2] ?? fm[3] ?? '').trim();
+    const valueStartInBody = (fm.index ?? 0) + fm[0].indexOf(p);
+    const valueStart = bodyStart + valueStartInBody;
+    const valueEnd = valueStart + p.length;
+
+    if (offset >= valueStart && offset <= valueEnd) {
+      return { kind: 'directive', path: p, startOffset: valueStart, endOffset: valueEnd };
+    }
+    return null;
+  }
+
+  // 2) jsp:include tag: <jsp:include page="..." />
+  // Best-effort: only consider the start tag region.
+  const jspIncludeRe = /<\s*jsp:include\b[^>]*>/gi;
+  while ((m = jspIncludeRe.exec(jspText))) {
+    const full = m[0];
+    const start = m.index;
+    const end = start + full.length;
+    if (offset < start || offset > end) {
+      continue;
+    }
+
+    const pageRe = /\bpage\s*=\s*("([^"]*)"|'([^']*)')/i;
+    const pm = pageRe.exec(full);
+    if (!pm) {
+      return null;
+    }
+
+    const p = (pm[2] ?? pm[3] ?? '').trim();
+    const valueStartInFull = (pm.index ?? 0) + pm[0].indexOf(p);
+    const valueStart = start + valueStartInFull;
+    const valueEnd = valueStart + p.length;
+
+    if (offset >= valueStart && offset <= valueEnd) {
+      return { kind: 'jsp-include', path: p, startOffset: valueStart, endOffset: valueEnd };
+    }
+    return null;
+  }
+
+  return null;
+}
+
 export function findTaglibDefinitionLocation(args: {
   tldFilePath: string;
   tagName: string;
