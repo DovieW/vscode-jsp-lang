@@ -14,7 +14,8 @@
     },
     "main": "./dist/extension.js",
     "activationEvents": [
-        "onLanguage:jsp"
+        "onLanguage:jsp",
+        "onDebugAdapterProtocolTracker:java"
     ],
     "categories": [
         "Programming Languages"
@@ -23,9 +24,21 @@
         "build": "node ./esbuild.mjs --prod",
         "watch": "node ./esbuild.mjs --watch",
         "typecheck": "tsc -p ./tsconfig.json",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "vscode:prepublish": "npm run build"
     },
     "contributes": {
+        "configuration": {
+            "title": "JSP Language Support",
+            "properties": {
+                "jsp.debug.stackFrameRewrite.enabled": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Best-effort: when debugging Java, rewrite stack frames from Tomcat-generated JSP servlet sources back to .jsp/.jspf sources when mapping markers are available."
+                }
+            }
+        },
         "languages": [
             {
                 "id": "jsp",
@@ -69,6 +82,7 @@
         "@types/vscode": "^1.90.0",
         "@vscode/vsce": "^2.21.1",
         "esbuild": "^0.24.2",
-        "typescript": "^5.7.2"
+        "typescript": "^5.7.2",
+        "vitest": "^2.1.8"
     }
 }

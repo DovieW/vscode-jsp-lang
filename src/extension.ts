@@ -7,12 +7,18 @@ import {
   TransportKind,
 } from 'vscode-languageclient/node';
 
+import { registerJavaStackFrameRewriter } from './debug/javaStackFrameRewriter';
+
 let client: LanguageClient | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   outputChannel = vscode.window.createOutputChannel('JSP Language Server');
   context.subscriptions.push(outputChannel);
+
+  // Feature 04 (Milestone 1): when debugging Java, attempt to rewrite stack frames from
+  // Tomcat-generated servlet sources back to .jsp/.jspf paths + lines.
+  registerJavaStackFrameRewriter(context, outputChannel);
 
   const serverModule = context.asAbsolutePath(path.join('dist', 'server.js'));
 

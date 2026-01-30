@@ -249,3 +249,37 @@ If you want the fastest credible path:
 1) implement stack-frame rewriting for Tomcat-generated sources
 2) then add breakpoint translation
 3) expand compatibility only after you have strong tests and clear user configuration knobs
+
+---
+
+## Current status in this repo (Milestone 1 ✅, experimental)
+
+We currently ship an **experimental** Milestone 1 implementation:
+
+- The extension registers a **Debug Adapter Protocol tracker** for the Java debug type.
+- When the Java debug adapter returns a `stackTrace` response, we **rewrite** stack frames that
+  point at Tomcat/Jasper generated servlet sources (typically `.../org/apache/jsp/*_jsp.java`).
+- Rewriting is based on **best-effort marker comments** found in the generated `.java` source.
+
+This is intentionally narrow:
+
+- Tomcat/Jasper only (heuristics)
+- Stack frames only (no breakpoint translation yet)
+
+### User setting
+
+- `jsp.debug.stackFrameRewrite.enabled` (default: `true`)
+
+### Where to test
+
+- Manual JSP sample: `samples/feature04-tests/jsp-debug-stackframe-rewrite.jsp`
+- Unit-test fixture (mapping parser): `test/fixtures/tomcat-generated/index_jsp.java`
+
+### Limitations (expected)
+
+- If generated servlet sources are not present locally, we can’t parse markers → no rewrite.
+- If marker formats differ from our supported patterns, mapping may fail.
+- Mapping from “webapp-relative JSP paths” to “workspace file paths” is currently heuristic.
+
+Once we’re happy with stack-frame correctness, the next step is to evolve toward Strategy A (a real proxy adapter)
+and implement breakpoint translation.

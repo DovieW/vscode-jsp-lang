@@ -30,3 +30,17 @@
 
 - **Support tagdir directives**
   - `<%@ taglib prefix="x" tagdir="/WEB-INF/tags" %>` (tag files) could be indexed separately.
+
+## Debugger integration (Feature 04) follow-ups
+
+- **Move from tracker-based rewriting to a proxy adapter (Strategy A)**
+  - The current Milestone 1 implementation rewrites `stackTrace` responses using a Java debug adapter tracker.
+  - Trackers are inherently best-effort; a proxy adapter gives more control and can support breakpoint translation.
+
+- **Make JSP path resolution configurable**
+  - Current mapping tries common web roots (`src/main/webapp`, `WebContent`) and direct workspace-relative paths.
+  - Add settings for explicit web roots and/or deployed context mapping.
+
+- **Improve mapping parser coverage**
+  - Add fixtures from real Tomcat/Jasper generated sources across versions.
+  - If feasible, consider SMAP-based mapping for higher fidelity.
