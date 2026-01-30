@@ -7,13 +7,14 @@
   - Better: wire up file watching for `**/*.tld` via LSP `workspace/didChangeWatchedFiles` (client-side) or VS Code FS watchers (extension-side), then rebuild incrementally.
 
 - **Make TLD discovery configurable**
-  - Add settings like:
-    - `jsp.taglibs.webInfGlobs`
-    - `jsp.taglibs.maxScanDepth`
+  - Status: implemented — see `jsp.taglibs.tldGlobs`.
+  - Follow-up ideas:
     - `jsp.taglibs.excludeGlobs`
+    - `jsp.taglibs.maxFiles` / safety limits
 
 - **Jar scanning (META-INF/*.tld)**
-  - If enabled, read TLDs from dependency jars (requires classpath / build tool integration or jar glob heuristics).
+  - Status: implemented (best-effort) — see `jsp.taglibs.enableJarScanning` + `jsp.taglibs.jarGlobs`.
+  - Follow-up: integrate with the *project classpath* instead of glob heuristics.
 
 - **More robust parsing of tags/attributes**
   - Diagnostics currently use regexes against raw JSP text.

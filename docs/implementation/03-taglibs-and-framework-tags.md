@@ -156,13 +156,15 @@ Status: implemented (MVP) — the language server registers a `**/*.tld` file wa
 
 - Add jar scanning (build tool integration + zip reading)
 
+Status: implemented (best-effort) — jar/zip scanning for `META-INF/*.tld` is available behind settings (see below).
+
 ### Workspace configuration
 
-Add settings (future PR) to make discovery workable:
+Settings (implemented) to make discovery workable:
 
-- `jsp.taglibs.webInfGlobs`: array of globs to locate TLDs
+- `jsp.taglibs.tldGlobs`: array of workspace-relative globs to locate `.tld` files
 - `jsp.taglibs.enableJarScanning`: boolean
-- `jsp.taglibs.jarGlobs` or a “use project classpath” strategy
+- `jsp.taglibs.jarGlobs`: array of workspace-relative globs to locate `.jar` files to scan for `META-INF/*.tld`
 
 Also handle multi-root workspaces by maintaining an index per workspace folder.
 
@@ -238,6 +240,8 @@ Status: partially implemented — boolean attribute values (`true|false`) comple
 
 - Read `META-INF/*.tld` from jars
 - Map jar-provided taglibs by `<uri>`
+
+Status: implemented (best-effort) — jar scanning is glob-based and disabled by default.
 
 ### Milestone 4 — Deep value completion (optional)
 

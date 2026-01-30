@@ -32,6 +32,31 @@
         "configuration": {
             "title": "JSP Language Support",
             "properties": {
+                "jsp.taglibs.tldGlobs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "**/*.tld"
+                    ],
+                    "description": "Glob patterns (workspace-relative) used to find Tag Library Descriptor (.tld) files for taglib completions/hover/diagnostics."
+                },
+                "jsp.taglibs.enableJarScanning": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Experimental: scan .jar/.zip files for META-INF/*.tld taglibs and include them in tag completions/diagnostics."
+                },
+                "jsp.taglibs.jarGlobs": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "**/WEB-INF/lib/**/*.jar"
+                    ],
+                    "description": "Glob patterns (workspace-relative) used to find .jar files to scan for META-INF/*.tld when jsp.taglibs.enableJarScanning is true."
+                },
                 "jsp.debug.stackFrameRewrite.enabled": {
                     "type": "boolean",
                     "default": true,
@@ -44,8 +69,14 @@
                 },
                 "jsp.debug.stackFrameRewrite.webRoots": {
                     "type": "array",
-                    "items": { "type": "string" },
-                    "default": [".", "src/main/webapp", "WebContent"],
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        ".",
+                        "src/main/webapp",
+                        "WebContent"
+                    ],
                     "description": "Candidate workspace-relative web roots to resolve Tomcat-emitted JSP paths (e.g. /webapp/index.jsp) back to real files in your workspace."
                 },
                 "jsp.debug.stackFrameRewrite.cache.maxEntries": {
@@ -126,19 +157,24 @@
         ]
     },
     "dependencies": {
+        "fast-glob": "^3.3.3",
         "fast-xml-parser": "^4.5.3",
         "vscode-css-languageservice": "^6.3.0",
         "vscode-html-languageservice": "^5.3.0",
         "vscode-languageclient": "^9.0.1",
         "vscode-languageserver": "^9.0.1",
-        "vscode-languageserver-textdocument": "^1.0.11"
+        "vscode-languageserver-textdocument": "^1.0.11",
+        "yauzl": "^3.2.0"
     },
     "devDependencies": {
         "@types/node": "^22.10.2",
         "@types/vscode": "^1.90.0",
+        "@types/yauzl": "^2.10.3",
+        "@types/yazl": "^3.3.0",
         "@vscode/vsce": "^2.21.1",
         "esbuild": "^0.24.2",
         "typescript": "^5.7.2",
-        "vitest": "^2.1.8"
+        "vitest": "^2.1.8",
+        "yazl": "^3.3.1"
     }
 }

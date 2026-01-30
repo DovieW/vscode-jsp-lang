@@ -77,6 +77,14 @@ let workspaceRoots: string[] = [];
 let taglibIndex: TaglibIndex | undefined;
 let taglibIndexBuild: Promise<void> | undefined;
 
+type TaglibsConfig = {
+  tldGlobs?: string[];
+  enableJarScanning?: boolean;
+  jarGlobs?: string[];
+};
+
+let taglibsConfig: TaglibsConfig = {};
+
 function uriToFsPath(uri: string | null | undefined): string | undefined {
   if (!uri) {
     return undefined;
@@ -96,7 +104,12 @@ async function ensureTaglibIndex(): Promise<TaglibIndex | undefined> {
   // Rebuild occasionally (helps when users add .tld files while VS Code is open).
   const isStale = !taglibIndex || Date.now() - taglibIndex.builtAtMs > 15_000;
   if (!taglibIndexBuild && isStale) {
-    taglibIndexBuild = buildTaglibIndex(workspaceRoots)
+    taglibIndexBuild = buildTaglibIndex({
+      roots: workspaceRoots,
+      tldGlobs: taglibsConfig.tldGlobs,
+      enableJarScanning: taglibsConfig.enableJarScanning,
+      jarGlobs: taglibsConfig.jarGlobs,
+    })
       .then((idx) => {
         taglibIndex = idx;
         connection.console.log(
@@ -780,6 +793,18 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   }
   workspaceRoots = roots;
 
+  // Optional extension-provided config.
+  // We keep this best-effort so the server can still run without any init options.
+  const init = (params.initializationOptions ?? {}) as any;
+  const cfg = init?.taglibs;
+  if (cfg && typeof cfg === 'object') {
+    taglibsConfig = {
+      tldGlobs: Array.isArray(cfg.tldGlobs) ? cfg.tldGlobs.filter((x: any) => typeof x === 'string') : undefined,
+      enableJarScanning: typeof cfg.enableJarScanning === 'boolean' ? cfg.enableJarScanning : undefined,
+      jarGlobs: Array.isArray(cfg.jarGlobs) ? cfg.jarGlobs.filter((x: any) => typeof x === 'string') : undefined,
+    };
+  }
+
   const result: InitializeResult = {
     capabilities: {
       textDocumentSync: TextDocumentSyncKind.Incremental,
@@ -797,6 +822,21 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
 
   connection.console.log(`JSP language server initialized (root: ${params.rootUri ?? 'n/a'})`);
   return result;
+});
+
+// Custom notification from the VS Code extension when jsp.taglibs.* settings change.
+connection.onNotification('jsp/taglibsConfig', (cfg: any) => {
+  taglibsConfig = {
+    tldGlobs: Array.isArray(cfg?.tldGlobs) ? cfg.tldGlobs.filter((x: any) => typeof x === 'string') : undefined,
+    enableJarScanning: typeof cfg?.enableJarScanning === 'boolean' ? cfg.enableJarScanning : undefined,
+    jarGlobs: Array.isArray(cfg?.jarGlobs) ? cfg.jarGlobs.filter((x: any) => typeof x === 'string') : undefined,
+  };
+
+  taglibIndex = undefined;
+  // Revalidate open docs so completions/diagnostics update quickly.
+  for (const d of documents.all()) {
+    scheduleValidation(d);
+  }
 });
 
 function getTaglibNameAndAttrAtOffset(

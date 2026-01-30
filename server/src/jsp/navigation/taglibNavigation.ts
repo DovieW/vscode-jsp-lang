@@ -88,6 +88,13 @@ export function findTaglibDefinitionLocation(args: {
     return null;
   }
 
+  // Jar-scanned sources are represented as `jar:/path/to.jar!/META-INF/x.tld`.
+  // We don't currently provide a virtual document for these, so definition locations
+  // are only supported for real workspace files.
+  if (tldFilePath.startsWith('jar:') || tldFilePath.includes('!/')) {
+    return null;
+  }
+
   // Best-effort location mapping by searching the XML text.
   // We intentionally avoid a full XML AST with position tracking.
   const xml = fsSync.readFileSync(tldFilePath, 'utf8');

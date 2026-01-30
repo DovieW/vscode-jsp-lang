@@ -13,6 +13,14 @@ import { registerJavaBreakpointTranslator } from './debug/javaBreakpointTranslat
 let client: LanguageClient | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
 
+function getTaglibsConfig(): { tldGlobs: string[]; enableJarScanning: boolean; jarGlobs: string[] } {
+  const cfg = vscode.workspace.getConfiguration('jsp');
+  const tldGlobs = cfg.get<string[]>('taglibs.tldGlobs', ['**/*.tld']);
+  const enableJarScanning = cfg.get<boolean>('taglibs.enableJarScanning', false);
+  const jarGlobs = cfg.get<string[]>('taglibs.jarGlobs', ['**/WEB-INF/lib/**/*.jar']);
+  return { tldGlobs, enableJarScanning, jarGlobs };
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   outputChannel = vscode.window.createOutputChannel('JSP Language Server');
   context.subscriptions.push(outputChannel);
@@ -46,6 +54,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     // If we restrict to `file`, the client never attaches and features like hover won't fire.
     documentSelector: [{ language: 'jsp' }],
     outputChannel,
+    initializationOptions: {
+      taglibs: getTaglibsConfig(),
+    },
   };
 
   client = new LanguageClient(
@@ -57,6 +68,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   await client.start();
   context.subscriptions.push(client);
+
+  // Forward settings changes to the server so taglib discovery updates without reload.
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (!client) {
+        return;
+      }
+      if (e.affectsConfiguration('jsp.taglibs')) {
+        void client.sendNotification('jsp/taglibsConfig', getTaglibsConfig());
+      }
+    }),
+  );
 }
 
 export async function deactivate(): Promise<void> {

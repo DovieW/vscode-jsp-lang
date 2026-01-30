@@ -51,7 +51,8 @@ Notes:
 
 - HTML diagnostics are intentionally conservative to avoid false positives caused by JSP constructs.
 - CSS features work by extracting CSS regions from a same-length HTML projection of the JSP file.
-- Taglib discovery is workspace-based (it scans for `**/*.tld`). JAR-provided TLDs are not supported yet.
+- Taglib discovery is configurable via `jsp.taglibs.tldGlobs` (defaults to scanning `**/*.tld`).
+- Optional: taglibs from dependency jars can be picked up via `jsp.taglibs.enableJarScanning` + `jsp.taglibs.jarGlobs` (best-effort jar glob scanning).
 
 ### Debugging integration (experimental)
 
@@ -130,7 +131,7 @@ Specifically, the following are **still missing**:
   - No go-to-definition into Java sources for `<%= bean.method() %>`
   - No warnings for invalid Java syntax or “bad practice” scriptlets
 - **Framework tag libraries (Struts/JSTL/custom tags) from dependencies**
-  - No JAR/classpath scanning for `META-INF/*.tld` yet
+  - No project classpath integration; jar scanning is glob-based (enable `jsp.taglibs.enableJarScanning`)
   - No container-provided URI-to-TLD mappings
   - No bean/property inference for attribute values
 - **Java debugging integration for JSP**
