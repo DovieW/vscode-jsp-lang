@@ -213,3 +213,21 @@ Add settings (future) such as:
 - Avoid “error” severity unless you’re confident (index complete, deterministic validation)
 - Prefer opt-in strictness via settings
 - Keep rules small and explainable; users will ignore noisy linters
+
+---
+
+## Current status in this repo (Milestones 1–3 ✅; Java-backed diagnostics ❌)
+
+We currently ship JSP-aware diagnostics via the bundled language server:
+
+- **HTML diagnostics** (minimal, conservative) and **CSS diagnostics** for embedded regions (Feature 01 foundation)
+- **Taglib diagnostics** for unknown prefixes/tags/attributes when `.tld` data is available (Feature 03 foundation)
+- **JSP linting MVP** (Feature 06):
+  - Info diagnostic when any **scriptlet** (`<% ... %>`) is present
+  - Warnings for malformed taglib directives missing `prefix` or `uri`
+  - Warnings for **unresolvable include paths** in `<%@ include file="..." %>` and `<jsp:include page="..." />` (best-effort filesystem resolution)
+
+What’s still out of scope / not implemented:
+
+- Java compiler/typecheck diagnostics inside scriptlets (Feature 2 prerequisite)
+- Configurable rule severities / per-rule enable/disable (future settings work)

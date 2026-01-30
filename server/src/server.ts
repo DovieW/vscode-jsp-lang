@@ -49,6 +49,7 @@ import { parseTaglibDirectives } from './jsp/taglibs/parseTaglibDirectives';
 import { getStartTagContext } from './jsp/taglibs/startTagContext';
 import type { TaglibIndex } from './jsp/taglibs/types';
 import { validateTaglibUsageInJsp } from './jsp/taglibs/validateTaglibUsage';
+import { validateJspLinting } from './jsp/diagnostics/jspLint';
 import {
   buildPrefixRenameEdits,
   findIncludePathAtOffset,
@@ -625,9 +626,16 @@ async function validateJspDocument(jspDocument: TextDocument): Promise<void> {
   const tldIndex = await ensureTaglibIndex();
   const taglibDiagnostics = validateTaglibUsageInJsp(jspDocument, tldIndex);
 
+  const lintDiagnostics = validateJspLinting({
+    doc: jspDocument,
+    javaRegions: cached.javaRegions,
+    workspaceRoots,
+    docFsPath: uriToFsPath(jspDocument.uri),
+  });
+
   connection.sendDiagnostics({
     uri: jspDocument.uri,
-    diagnostics: [...htmlDiagnostics, ...cssDiagnostics, ...taglibDiagnostics],
+    diagnostics: [...htmlDiagnostics, ...cssDiagnostics, ...taglibDiagnostics, ...lintDiagnostics],
   });
 }
 
