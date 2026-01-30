@@ -20,7 +20,7 @@
 
     <h1>Debugger test page</h1>
 
-    <% 
+    <%
       int x = 1; // Put a breakpoint here
       int y = x + 41;
       out.write("Answer=" + y);

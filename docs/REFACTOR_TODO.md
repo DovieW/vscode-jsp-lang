@@ -33,6 +33,10 @@
 
 ## Debugger integration (Feature 04) follow-ups
 
+- **Extract shared DAP mapping helpers**
+  - `src/debug/javaStackFrameRewriter.ts` and `src/debug/javaBreakpointTranslator.ts` now share a few concepts (web root semantics, JSP path resolution).
+  - Consider extracting the shared resolver(s) into a small module to avoid drift.
+
 - **Move from tracker-based rewriting to a proxy adapter (Strategy A)**
   - The current Milestone 1 implementation rewrites `stackTrace` responses using a Java debug adapter tracker.
   - Trackers are inherently best-effort; a proxy adapter gives more control and can support breakpoint translation.
@@ -44,3 +48,8 @@
 - **Improve mapping parser coverage**
   - Add fixtures from real Tomcat/Jasper generated sources across versions.
   - If feasible, consider SMAP-based mapping for higher fidelity.
+
+- **Optional file watching for Tomcat generated servlet sources**
+  - Today we rely on stat+mtime/size/inode checks (plus per-message refresh) to pick up recompiles.
+  - Future: optionally watch known generated servlet files/directories (Tomcat work dir) and proactively invalidate marker caches + generated-java-path caches.
+  - Needs guardrails: cap watchers, handle rename/atomic replace, and ensure it’s disabled by default in huge work dirs.

@@ -252,28 +252,57 @@ If you want the fastest credible path:
 
 ---
 
-## Current status in this repo (Milestone 1 ✅, experimental)
+## Current status in this repo (Milestones 1–3 ✅, experimental)
 
-We currently ship an **experimental** Milestone 1 implementation:
+We currently ship an **experimental** implementation for Milestones 1–3:
 
 - The extension registers a **Debug Adapter Protocol tracker** for the Java debug type.
 - When the Java debug adapter returns a `stackTrace` response, we **rewrite** stack frames that
   point at Tomcat/Jasper generated servlet sources (typically `.../org/apache/jsp/*_jsp.java`).
-- Rewriting is based on **best-effort marker comments** found in the generated `.java` source.
+- When VS Code sends a `setBreakpoints` request for a `.jsp/.jspf/.tag` source, we attempt to
+  **translate** it to `setBreakpoints` in the corresponding generated servlet `.java` file.
+- Rewriting/translation is based on **best-effort marker comments** found in the generated `.java` source.
 
 This is intentionally narrow:
 
 - Tomcat/Jasper only (heuristics)
-- Stack frames only (no breakpoint translation yet)
+- Breakpoint translation is best-effort and depends on being able to locate the generated sources.
 
 ### User setting
 
 - `jsp.debug.stackFrameRewrite.enabled` (default: `true`)
 
+- `jsp.debug.breakpointTranslation.enabled` (default: `true`)
+
+### Tomcat work directory (important for Milestone 2)
+
+Breakpoint translation needs access to Tomcat/Jasper generated servlet sources.
+
+You can point the extension at Tomcat’s `work/` directory:
+
+- `jsp.debug.tomcat.workDir`
+
+If not set, we try environment variable fallbacks (`CATALINA_BASE`, `CATALINA_HOME`, `TOMCAT_HOME`) and append `/work`.
+
+Additional optional settings (useful for Milestone 3 “mapping refresh” and perf tuning):
+
+- `jsp.debug.stackFrameRewrite.webRoots` — customize how Tomcat-emitted JSP path refs (e.g. `/webapp/index.jsp`) are resolved back to workspace files.
+- `jsp.debug.stackFrameRewrite.cache.maxEntries` — bound the parsed-marker cache size (LRU-ish).
+- `jsp.debug.stackFrameRewrite.cache.statDebounceMs` — reduce repeated `stat()` calls during bursty `stackTrace` traffic.
+- `jsp.debug.stackFrameRewrite.jspPathCache.ttlMs` — cache JSP path resolution results to avoid repeated workspace scanning.
+- `jsp.debug.stackFrameRewrite.verbose` — enable debug logging for rewrites and cache refreshes.
+
 ### Where to test
 
 - Manual JSP sample: `samples/feature04-tests/jsp-debug-stackframe-rewrite.jsp`
+- Manual JSP sample: `samples/feature04-tests/jsp-debug-breakpoint-translation.jsp`
 - Unit-test fixture (mapping parser): `test/fixtures/tomcat-generated/index_jsp.java`
+
+### Tests in this repo
+
+- Stack-frame rewriting: `test/javaStackFrameRewriter.test.ts`
+- Breakpoint translation: `test/javaBreakpointTranslator.test.ts`
+- Mapping cache / refresh behavior: `test/generatedJavaMarkerCache.test.ts`
 
 ### Limitations (expected)
 
@@ -281,5 +310,11 @@ This is intentionally narrow:
 - If marker formats differ from our supported patterns, mapping may fail.
 - Mapping from “webapp-relative JSP paths” to “workspace file paths” is currently heuristic.
 
-Once we’re happy with stack-frame correctness, the next step is to evolve toward Strategy A (a real proxy adapter)
-and implement breakpoint translation.
+Additional limitation for Milestone 2:
+
+- Resolving a JSP file to its generated servlet `.java` file may require scanning the Tomcat work directory.
+  This is bounded by `jsp.debug.breakpointTranslation.maxGeneratedFilesToScan` and cached via
+  `jsp.debug.breakpointTranslation.generatedJavaPathCache.ttlMs`.
+
+Once we’re happy with these tracker-based results, the next step is to evolve toward Strategy A (a real proxy adapter)
+for more robust breakpoint binding, source requests, and container compatibility.

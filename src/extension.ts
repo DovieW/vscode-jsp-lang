@@ -8,6 +8,7 @@ import {
 } from 'vscode-languageclient/node';
 
 import { registerJavaStackFrameRewriter } from './debug/javaStackFrameRewriter';
+import { registerJavaBreakpointTranslator } from './debug/javaBreakpointTranslator';
 
 let client: LanguageClient | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
@@ -19,6 +20,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Feature 04 (Milestone 1): when debugging Java, attempt to rewrite stack frames from
   // Tomcat-generated servlet sources back to .jsp/.jspf paths + lines.
   registerJavaStackFrameRewriter(context, outputChannel);
+
+  // Feature 04 (Milestone 2): when setting breakpoints in .jsp/.jspf/.tag files during Java debugging,
+  // translate them to breakpoints in the corresponding Tomcat/Jasper generated servlet source.
+  registerJavaBreakpointTranslator(context, outputChannel);
 
   const serverModule = context.asAbsolutePath(path.join('dist', 'server.js'));
 
