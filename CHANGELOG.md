@@ -1,5 +1,10 @@
 # Change Log
 
+## [0.3.0]
+
+- Add workspace `.tld`-backed taglib intelligence (tag/attribute completions, hover, and warning diagnostics)
+- Add basic JSP snippet completions for starting `<%` / `<%=` / `<%!` / `<%@`
+
 ## [0.2.0]
 
 - Add a bundled language server to provide HTML completion/hover inside `.jsp`

@@ -40,3 +40,11 @@ These files are meant to manually test **taglib intelligence**:
 7) Open `taglibs-multiple-taglibs-completion.jsp`
    - Verify multiple taglibs can coexist (prefix `demo` and `ui`).
    - Verify `<ui:` suggests `panel` and attributes like `title` / `collapsible`.
+
+8) Open `taglibs-tag-file-completions.tag`
+   - Verify taglibs work in `.tag` files too.
+   - Type `<demo:` and confirm tag name completion suggests `form`, `input`, `if`.
+
+9) Open `taglibs-jspf-fragment-completions.jspf`
+   - Verify taglibs work in `.jspf` fragments too.
+   - Confirm boolean value completion inside `test=""` suggests `true` / `false`.

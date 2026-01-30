@@ -32,6 +32,12 @@ When editing `.jsp` files, the extension provides:
   - `<style> ... </style>` blocks
   - inline `style="..."` attributes
 - CSS diagnostics (syntax/validation) for those CSS regions
+- Taglib support for custom/framework JSP tags when a matching `.tld` exists in the workspace:
+  - tag name completion after typing `<prefix:` (where `prefix` is imported via `<%@ taglib %>`)
+  - attribute name completion for known tags
+  - boolean attribute value completion (`true` / `false`) when the TLD declares a boolean type
+  - hover docs for tag/attribute descriptions (from the TLD)
+  - warning diagnostics for unknown prefixes/tags/attributes
 - JSP scriptlet/directive **MVP completions**:
   - implicit object identifier completion inside `<% ... %>`, `<%= ... %>`, `<%! ... %>`
   - snippet completions when starting `<%` / `<%=` / `<%!` / `<%@`
@@ -40,6 +46,7 @@ Notes:
 
 - HTML diagnostics are intentionally conservative to avoid false positives caused by JSP constructs.
 - CSS features work by extracting CSS regions from a same-length HTML projection of the JSP file.
+- Taglib discovery is workspace-based (it scans for `**/*.tld`). JAR-provided TLDs are not supported yet.
 
 Highlighted JSP constructs include:
 
@@ -87,7 +94,6 @@ This extension does **not** currently provide a full JSP language server.
 
 In particular, it does not include:
 
-- Diagnostics / linting / error checking
 - JavaScript IntelliSense/diagnostics for `<script>` blocks (planned)
 - Full Java IntelliSense/diagnostics for JSP scriptlets (`<% ... %>`) (planned)
 - Go to definition / references / rename / symbol search
@@ -109,9 +115,10 @@ Specifically, the following are **still missing**:
 - **Java-aware navigation/analysis** from scriptlets
   - No go-to-definition into Java sources for `<%= bean.method() %>`
   - No warnings for invalid Java syntax or “bad practice” scriptlets
-- **Framework tag libraries (Struts 1.x, JSTL, custom tags)**
-  - No taglib resolution from `<%@ taglib %>`
-  - No attribute/value validation or completions
+- **Framework tag libraries (Struts/JSTL/custom tags) from dependencies**
+  - No JAR/classpath scanning for `META-INF/*.tld` yet
+  - No container-provided URI-to-TLD mappings
+  - No bean/property inference for attribute values
 - **Java debugging integration for JSP**
   - No breakpoints/step-through/variable inspection support specifically tied to JSP/scriptlets/tags
 - **Profiling, migration tooling, project configuration, or AI-tool integration features**
@@ -122,6 +129,8 @@ Specifically, the following are **still missing**:
 - The grammar is best-effort and does **not** cover every JSP pattern or edge case.
 - `${...}` / `#{...}` bodies are tokenized using the Java grammar (`source.java`). That improves coloring consistency, but JSP EL is not identical to Java—some constructs may be highlighted imperfectly.
 - Custom tag libraries (JSTL/custom tags) are generally treated as HTML-like tags; semantic understanding (e.g., validating attributes) is out of scope.
+
+  Note: This extension *does* provide basic tag/attribute awareness when the taglib is backed by a `.tld` file in the workspace. It does not do deep semantic analysis of attribute values.
 
 If you need IDE-like features, the usual approach is combining this extension (for JSP-specific highlighting) with separate Java and web tooling; however, whether those tools activate for the `jsp` language id depends on the specific extension.
 

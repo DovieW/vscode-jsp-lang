@@ -1,0 +1,14 @@
+<%@ taglib prefix="demo" uri="http://example.com/tld/demo" %>
+
+<%--
+  Feature 03: Taglibs in .jspf fragments
+
+  What to test:
+  - Type `<demo:` below and confirm tag name completion suggests: form, input, if
+  - Inside `<demo:if ...>` confirm attribute completion suggests: test
+  - Inside `test=""` confirm value completion suggests: true / false
+--%>
+
+<demo:if test="">
+  <demo:input name="email" />
+</demo:if>
