@@ -14,8 +14,7 @@
     },
     "main": "./dist/extension.js",
     "activationEvents": [
-        "onLanguage:jsp",
-        "onDebugAdapterProtocolTracker:java"
+        "onLanguage:jsp"
     ],
     "categories": [
         "Programming Languages"
@@ -112,73 +111,6 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Experimental: parse Java inside scriptlets and surface syntax errors as JSP diagnostics (no type checking)."
-                },
-                "jsp.debug.stackFrameRewrite.enabled": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Best-effort: when debugging Java, rewrite stack frames from Tomcat-generated JSP servlet sources back to .jsp/.jspf sources when mapping markers are available."
-                },
-                "jsp.debug.stackFrameRewrite.verbose": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Log stack-frame rewrite details and cache refresh events to the JSP Language Support output channel."
-                },
-                "jsp.debug.stackFrameRewrite.webRoots": {
-                    "type": "array",
-                    "items": {
-                        "type": "string"
-                    },
-                    "default": [
-                        ".",
-                        "src/main/webapp",
-                        "WebContent"
-                    ],
-                    "description": "Candidate workspace-relative web roots to resolve Tomcat-emitted JSP paths (e.g. /webapp/index.jsp) back to real files in your workspace."
-                },
-                "jsp.debug.stackFrameRewrite.cache.maxEntries": {
-                    "type": "number",
-                    "default": 200,
-                    "minimum": 1,
-                    "description": "Maximum number of Tomcat-generated servlet .java files to keep parsed mapping markers for (LRU-ish)."
-                },
-                "jsp.debug.stackFrameRewrite.cache.statDebounceMs": {
-                    "type": "number",
-                    "default": 250,
-                    "minimum": 0,
-                    "description": "Milliseconds to skip repeated stat() calls for the same generated servlet file during bursty stackTrace traffic. Set to 0 to stat on every lookup."
-                },
-                "jsp.debug.stackFrameRewrite.jspPathCache.ttlMs": {
-                    "type": "number",
-                    "default": 5000,
-                    "minimum": 0,
-                    "description": "Milliseconds to cache resolved JSP paths to avoid repeated workspace scanning. Set to 0 to disable caching."
-                },
-                "jsp.debug.breakpointTranslation.enabled": {
-                    "type": "boolean",
-                    "default": true,
-                    "description": "Best-effort: when debugging Java, translate breakpoints set in .jsp/.jspf/.tag files to the corresponding Tomcat/Jasper generated servlet sources when mapping markers are available."
-                },
-                "jsp.debug.breakpointTranslation.verbose": {
-                    "type": "boolean",
-                    "default": false,
-                    "description": "Log breakpoint translation details and cache refresh events to the JSP Language Support output channel."
-                },
-                "jsp.debug.tomcat.workDir": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional: Path to Tomcat's work directory (or a directory containing it). Used to locate Jasper generated *_jsp.java sources so JSP breakpoints can be translated. If empty, env vars like CATALINA_BASE/CATALINA_HOME are used as a fallback when available."
-                },
-                "jsp.debug.breakpointTranslation.maxGeneratedFilesToScan": {
-                    "type": "number",
-                    "default": 5000,
-                    "minimum": 100,
-                    "description": "Safety limit: maximum number of generated .java files to scan under jsp.debug.tomcat.workDir while trying to resolve a JSP to its generated servlet source."
-                },
-                "jsp.debug.breakpointTranslation.generatedJavaPathCache.ttlMs": {
-                    "type": "number",
-                    "default": 5000,
-                    "minimum": 0,
-                    "description": "Milliseconds to cache JSP->generated-java resolution results to avoid repeated filesystem scans. Set to 0 to disable caching."
                 }
             }
         },
