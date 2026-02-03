@@ -54,3 +54,8 @@
   - Today we rely on stat+mtime/size/inode checks (plus per-message refresh) to pick up recompiles.
   - Future: optionally watch known generated servlet files/directories (Tomcat work dir) and proactively invalidate marker caches + generated-java-path caches.
   - Needs guardrails: cap watchers, handle rename/atomic replace, and ensure it’s disabled by default in huge work dirs.
+
+## Scope reset / modularization
+
+- **Split profiling + debug extras into optional modules/extensions**
+  - If these features return, consider shipping them separately to keep the core JSP language support focused and lightweight.
