@@ -15,12 +15,7 @@
     "main": "./dist/extension.js",
     "activationEvents": [
         "onLanguage:jsp",
-        "onDebugAdapterProtocolTracker:java",
-        "onView:jspProfiling",
-        "onCommand:jsp.profiling.importLog",
-        "onCommand:jsp.profiling.startLive",
-        "onCommand:jsp.profiling.stopLive",
-        "onCommand:jsp.profiling.showReport"
+        "onDebugAdapterProtocolTracker:java"
     ],
     "categories": [
         "Programming Languages"
@@ -118,17 +113,6 @@
                     "default": false,
                     "description": "Experimental: parse Java inside scriptlets and surface syntax errors as JSP diagnostics (no type checking)."
                 },
-                "jsp.profiling.live.endpoint": {
-                    "type": "string",
-                    "default": "",
-                    "description": "Optional: HTTP endpoint that returns profiling events for live polling (JSON array or { events: [...] })."
-                },
-                "jsp.profiling.live.pollIntervalMs": {
-                    "type": "number",
-                    "default": 2000,
-                    "minimum": 250,
-                    "description": "Polling interval in milliseconds for live profiling."
-                },
                 "jsp.debug.stackFrameRewrite.enabled": {
                     "type": "boolean",
                     "default": true,
@@ -215,32 +199,6 @@
                     ".tag"
                 ],
                 "configuration": "./language-configuration.json"
-            }
-        ],
-        "views": {
-            "explorer": [
-                {
-                    "id": "jspProfiling",
-                    "name": "JSP Profiling"
-                }
-            ]
-        },
-        "commands": [
-            {
-                "command": "jsp.profiling.importLog",
-                "title": "JSP: Import Profiling Log"
-            },
-            {
-                "command": "jsp.profiling.startLive",
-                "title": "JSP: Start Live Profiling"
-            },
-            {
-                "command": "jsp.profiling.stopLive",
-                "title": "JSP: Stop Live Profiling"
-            },
-            {
-                "command": "jsp.profiling.showReport",
-                "title": "JSP: Show Profiling Report"
             }
         ],
         "grammars": [
