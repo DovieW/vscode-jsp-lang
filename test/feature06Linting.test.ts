@@ -28,6 +28,7 @@ describe('Feature 06 (JSP linting + validation)', () => {
       javaRegions: regions,
       workspaceRoots: [],
       docFsPath: undefined,
+      includeConfig: { webRoots: [], resolveStrategy: 'relative-first' },
       lintConfig: DEFAULT_LINT_CONFIG,
     });
 
@@ -49,6 +50,7 @@ describe('Feature 06 (JSP linting + validation)', () => {
       javaRegions: regions,
       workspaceRoots: [],
       docFsPath: undefined,
+      includeConfig: { webRoots: [], resolveStrategy: 'relative-first' },
       lintConfig: DEFAULT_LINT_CONFIG,
     });
 
@@ -83,6 +85,7 @@ describe('Feature 06 (JSP linting + validation)', () => {
       javaRegions: regions,
       workspaceRoots: [webRoot],
       docFsPath: docPath,
+      includeConfig: { webRoots: [], resolveStrategy: 'relative-first' },
       lintConfig: DEFAULT_LINT_CONFIG,
     });
 
@@ -126,6 +129,7 @@ describe('Feature 06 (JSP linting + validation)', () => {
       javaRegions: regions,
       workspaceRoots: [],
       docFsPath: undefined,
+      includeConfig: { webRoots: [], resolveStrategy: 'relative-first' },
       lintConfig,
     });
 

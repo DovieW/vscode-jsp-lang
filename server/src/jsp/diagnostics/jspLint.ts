@@ -1,11 +1,11 @@
-import * as fsSync from 'node:fs';
-import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import type { Diagnostic } from 'vscode-languageserver';
 import type { TextDocument } from 'vscode-languageserver-textdocument';
 
 import type { JavaRegion } from '../extractJavaRegions';
+import type { IncludeResolveStrategy } from '../resolveInclude';
+import { resolveIncludeTargetToFsPath } from '../resolveInclude';
 import type { LintConfig } from './lintConfig';
 import { DEFAULT_LINT_CONFIG, effectiveRuleLevel, severityFromLevel } from './lintConfig';
 
@@ -17,45 +17,10 @@ function isScriptletRegion(region: JavaRegion): boolean {
   );
 }
 
-function resolveIncludeTargetToFsPath(args: {
-  docFsPath: string;
-  workspaceRoots: string[];
-  includePath: string;
-}): string | undefined {
-  const { docFsPath, workspaceRoots, includePath } = args;
-  if (!docFsPath || !includePath) {
-    return undefined;
-  }
-
-  const docDir = path.dirname(docFsPath);
-
-  // JSP include paths often start with '/', which is typically "web-root relative", not filesystem-absolute.
-  if (includePath.startsWith('/')) {
-    const rel = includePath.replace(/^\/+/, '');
-
-    for (const root of workspaceRoots) {
-      const candidate = path.join(root, rel);
-      if (fsSync.existsSync(candidate)) {
-        return candidate;
-      }
-    }
-
-    // Fallback: treat as relative to current file.
-    const fallback = path.join(docDir, rel);
-    if (fsSync.existsSync(fallback)) {
-      return fallback;
-    }
-
-    return undefined;
-  }
-
-  const candidate = path.resolve(docDir, includePath);
-  if (fsSync.existsSync(candidate)) {
-    return candidate;
-  }
-
-  return undefined;
-}
+export type IncludeConfig = {
+  webRoots: string[];
+  resolveStrategy: IncludeResolveStrategy;
+};
 
 function pushDirectiveTaglibMissingAttrDiagnostics(doc: TextDocument, jspText: string, out: Diagnostic[], lint: LintConfig): void {
   const dirRe = /<%@\s*taglib\b([\s\S]*?)%>/gi;
@@ -123,11 +88,11 @@ function pushIncludeUnresolvableDiagnostics(
   doc: TextDocument,
   jspText: string,
   out: Diagnostic[],
-  args: { docFsPath?: string; workspaceRoots: string[] },
+  args: { docFsPath?: string; workspaceRoots: string[]; includeConfig: IncludeConfig },
   lint: LintConfig,
 ): void {
-  const { docFsPath, workspaceRoots } = args;
-  if (!docFsPath || !workspaceRoots.length) {
+  const { docFsPath, workspaceRoots, includeConfig } = args;
+  if (!docFsPath || (!workspaceRoots.length && !includeConfig.webRoots.length)) {
     return;
   }
 
@@ -155,7 +120,13 @@ function pushIncludeUnresolvableDiagnostics(
     const valueStart = bodyStart + valueStartInBody;
     const valueEnd = valueStart + p.length;
 
-    const resolved = resolveIncludeTargetToFsPath({ docFsPath, workspaceRoots, includePath: p });
+    const resolved = resolveIncludeTargetToFsPath({
+      docFsPath,
+      workspaceRoots,
+      webRoots: includeConfig.webRoots,
+      includePath: p,
+      strategy: includeConfig.resolveStrategy,
+    });
     if (resolved) {
       continue;
     }
@@ -193,7 +164,13 @@ function pushIncludeUnresolvableDiagnostics(
     const valueStart = startOffset + valueStartInFull;
     const valueEnd = valueStart + p.length;
 
-    const resolved = resolveIncludeTargetToFsPath({ docFsPath, workspaceRoots, includePath: p });
+    const resolved = resolveIncludeTargetToFsPath({
+      docFsPath,
+      workspaceRoots,
+      webRoots: includeConfig.webRoots,
+      includePath: p,
+      strategy: includeConfig.resolveStrategy,
+    });
     if (resolved) {
       continue;
     }
@@ -339,6 +316,7 @@ export function validateJspLinting(args: {
   javaRegions: JavaRegion[];
   workspaceRoots: string[];
   docFsPath?: string;
+  includeConfig: IncludeConfig;
   lintConfig?: LintConfig;
 }): Diagnostic[] {
   const { doc, javaRegions, workspaceRoots, docFsPath } = args;
@@ -354,7 +332,7 @@ export function validateJspLinting(args: {
   pushScriptletPresenceDiagnostic(doc, javaRegions, out, lint);
   pushScriptletCountAndSizeDiagnostics(doc, javaRegions, out, lint);
   pushDirectiveTaglibMissingAttrDiagnostics(doc, jspText, out, lint);
-  pushIncludeUnresolvableDiagnostics(doc, jspText, out, { docFsPath, workspaceRoots }, lint);
+  pushIncludeUnresolvableDiagnostics(doc, jspText, out, { docFsPath, workspaceRoots, includeConfig: args.includeConfig }, lint);
 
   return out;
 }

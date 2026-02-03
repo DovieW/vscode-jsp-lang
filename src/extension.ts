@@ -40,9 +40,54 @@ function getLintConfig(): {
   };
 }
 
+function getIncludeConfig(): { webRoots: string[]; resolveStrategy: string } {
+  const cfg = vscode.workspace.getConfiguration('jsp');
+  const webRoots = cfg.get<string[]>('webRoots', ['.', 'src/main/webapp', 'WebContent']);
+  const resolveStrategy = cfg.get<string>('includes.resolveStrategy', 'both');
+  return { webRoots, resolveStrategy };
+}
+
+function resolveWebRoots(webRoots: string[], workspaceFolders: readonly vscode.WorkspaceFolder[] | undefined): string[] {
+  if (!workspaceFolders?.length) {
+    return webRoots;
+  }
+
+  const out: string[] = [];
+  for (const folder of workspaceFolders) {
+    for (const root of webRoots) {
+      if (path.isAbsolute(root)) {
+        out.push(root);
+      } else {
+        out.push(path.join(folder.uri.fsPath, root));
+      }
+    }
+  }
+  return out;
+}
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   outputChannel = vscode.window.createOutputChannel('JSP Language Server');
   context.subscriptions.push(outputChannel);
+
+  const diagnoseCommand = vscode.commands.registerCommand('jsp.diagnoseConfig', () => {
+    const taglibs = getTaglibsConfig();
+    const lint = getLintConfig();
+    const includes = getIncludeConfig();
+
+    const roots = resolveWebRoots(includes.webRoots, vscode.workspace.workspaceFolders);
+
+    outputChannel?.appendLine('JSP configuration diagnostics');
+    outputChannel?.appendLine(`- Web roots (configured): ${includes.webRoots.join(', ') || '(none)'}`);
+    outputChannel?.appendLine(`- Web roots (resolved): ${roots.join(', ') || '(none)'}`);
+    outputChannel?.appendLine(`- Include strategy: ${includes.resolveStrategy}`);
+    outputChannel?.appendLine(`- Taglib TLD globs: ${taglibs.tldGlobs.join(', ')}`);
+    outputChannel?.appendLine(`- Taglib jar scanning: ${taglibs.enableJarScanning ? 'enabled' : 'disabled'}`);
+    outputChannel?.appendLine(`- Taglib jar globs: ${taglibs.jarGlobs.join(', ')}`);
+    outputChannel?.appendLine(`- Lint enabled: ${lint.enable ? 'yes' : 'no'}`);
+
+    outputChannel?.show(true);
+  });
+  context.subscriptions.push(diagnoseCommand);
 
   const serverModule = context.asAbsolutePath(path.join('dist', 'server.js'));
 
@@ -68,6 +113,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     initializationOptions: {
       taglibs: getTaglibsConfig(),
       lint: getLintConfig(),
+      includes: getIncludeConfig(),
     },
   };
 
@@ -93,6 +139,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
       if (e.affectsConfiguration('jsp.lint')) {
         void client.sendNotification('jsp/lintConfig', getLintConfig());
+      }
+
+      if (e.affectsConfiguration('jsp.webRoots') || e.affectsConfiguration('jsp.includes')) {
+        void client.sendNotification('jsp/includeConfig', getIncludeConfig());
       }
     }),
   );

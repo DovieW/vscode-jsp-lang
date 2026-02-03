@@ -14,7 +14,8 @@
     },
     "main": "./dist/extension.js",
     "activationEvents": [
-        "onLanguage:jsp"
+        "onLanguage:jsp",
+        "onCommand:jsp.diagnoseConfig"
     ],
     "categories": [
         "Programming Languages"
@@ -111,9 +112,37 @@
                     "type": "boolean",
                     "default": false,
                     "description": "Experimental: parse Java inside scriptlets and surface syntax errors as JSP diagnostics (no type checking)."
+                },
+                "jsp.webRoots": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        ".",
+                        "src/main/webapp",
+                        "WebContent"
+                    ],
+                    "description": "Workspace-relative web roots used to resolve JSP include paths that look web-root relative (e.g. /partials/header.jspf)."
+                },
+                "jsp.includes.resolveStrategy": {
+                    "type": "string",
+                    "enum": [
+                        "relative",
+                        "webRoot",
+                        "both"
+                    ],
+                    "default": "both",
+                    "description": "How to resolve include paths: relative (current file only), webRoot (jsp.webRoots only), or both (relative first, then webRoots)."
                 }
             }
         },
+        "commands": [
+            {
+                "command": "jsp.diagnoseConfig",
+                "title": "JSP: Diagnose Configuration"
+            }
+        ],
         "languages": [
             {
                 "id": "jsp",

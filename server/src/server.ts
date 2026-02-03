@@ -29,8 +29,6 @@ import {
   type WorkspaceEdit,
 } from 'vscode-languageserver';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import * as fsSync from 'node:fs';
-import * as path from 'node:path';
 import {
   createConnection,
   ProposedFeatures,
@@ -62,6 +60,10 @@ import { validateTaglibUsageInJspWithConfig } from './jsp/taglibs/validateTaglib
 import { validateJspLinting } from './jsp/diagnostics/jspLint';
 import { DEFAULT_LINT_CONFIG, normalizeLintConfig, severityFromRuleLevel } from './jsp/diagnostics/lintConfig';
 import { validateJavaScriptletSyntax } from './jsp/diagnostics/javaScriptletDiagnostics';
+import {
+  resolveIncludeTargetToFsPath,
+  type IncludeResolveStrategy,
+} from './jsp/resolveInclude';
 import {
   buildPrefixRenameEdits,
   findIncludePathAtOffset,
@@ -104,6 +106,16 @@ type TaglibsConfig = {
 let taglibsConfig: TaglibsConfig = {};
 
 let lintConfig = DEFAULT_LINT_CONFIG;
+
+type IncludeConfig = {
+  webRoots: string[];
+  resolveStrategy: IncludeResolveStrategy;
+};
+
+let includeConfig: IncludeConfig = {
+  webRoots: [],
+  resolveStrategy: 'relative-first',
+};
 
 function uriToFsPath(uri: string | null | undefined): string | undefined {
   if (!uri) {
@@ -686,6 +698,7 @@ async function validateJspDocument(jspDocument: TextDocument): Promise<void> {
     javaRegions: cached.javaRegions,
     workspaceRoots,
     docFsPath: uriToFsPath(jspDocument.uri),
+    includeConfig,
     lintConfig,
   });
 
@@ -858,6 +871,23 @@ function scheduleValidation(jspDocument: TextDocument): void {
   pendingValidations.set(uri, { timer, version });
 }
 
+function normalizeIncludeStrategy(value: unknown): IncludeResolveStrategy {
+  if (value === 'webRoot') {
+    return 'webRoot-only';
+  }
+  if (value === 'relative') {
+    return 'relative-only';
+  }
+  return 'relative-first';
+}
+
+function normalizeIncludeConfig(cfg: any): IncludeConfig {
+  return {
+    webRoots: Array.isArray(cfg?.webRoots) ? cfg.webRoots.filter((x: any) => typeof x === 'string') : [],
+    resolveStrategy: normalizeIncludeStrategy(cfg?.resolveStrategy),
+  };
+}
+
 connection.onInitialize((params: InitializeParams): InitializeResult => {
   const roots: string[] = [];
   const wf = params.workspaceFolders ?? [];
@@ -886,6 +916,7 @@ connection.onInitialize((params: InitializeParams): InitializeResult => {
   }
 
   lintConfig = normalizeLintConfig(init?.lint);
+  includeConfig = normalizeIncludeConfig(init?.includes);
 
   const result: InitializeResult = {
     capabilities: {
@@ -927,6 +958,14 @@ connection.onNotification('jsp/taglibsConfig', (cfg: any) => {
 // Custom notification from the VS Code extension when jsp.lint.* settings change.
 connection.onNotification('jsp/lintConfig', (cfg: any) => {
   lintConfig = normalizeLintConfig(cfg);
+  for (const d of documents.all()) {
+    scheduleValidation(d);
+  }
+});
+
+// Custom notification from the VS Code extension when jsp.webRoots or jsp.includes.* change.
+connection.onNotification('jsp/includeConfig', (cfg: any) => {
+  includeConfig = normalizeIncludeConfig(cfg);
   for (const d of documents.all()) {
     scheduleValidation(d);
   }
@@ -1032,34 +1071,15 @@ function resolveIncludeTargetToFileUri(doc: TextDocument, includePath: string): 
     return undefined;
   }
 
-  const docDir = path.dirname(docFsPath);
+  const resolved = resolveIncludeTargetToFsPath({
+    docFsPath,
+    workspaceRoots,
+    webRoots: includeConfig.webRoots,
+    includePath,
+    strategy: includeConfig.resolveStrategy,
+  });
 
-  // JSP include paths often start with '/', which is typically "web-root relative", not filesystem-absolute.
-  if (includePath.startsWith('/')) {
-    const rel = includePath.replace(/^\/+/, '');
-
-    for (const root of workspaceRoots) {
-      const candidate = path.join(root, rel);
-      if (fsSync.existsSync(candidate)) {
-        return pathToFileURL(candidate).toString();
-      }
-    }
-
-    // Fallback: treat as relative to the current file's directory.
-    const fallback = path.join(docDir, rel);
-    if (fsSync.existsSync(fallback)) {
-      return pathToFileURL(fallback).toString();
-    }
-
-    return undefined;
-  }
-
-  const candidate = path.resolve(docDir, includePath);
-  if (fsSync.existsSync(candidate)) {
-    return pathToFileURL(candidate).toString();
-  }
-
-  return undefined;
+  return resolved ? pathToFileURL(resolved).toString() : undefined;
 }
 
 function buildDirectiveSymbols(doc: TextDocument): DocumentSymbol[] {
