@@ -169,6 +169,8 @@ This is closer to “build a JSP-aware debugger” than “add a few extension f
 
 ### Diagnostics & profiling
 
+**Scope note (2026-02):** runtime profiling features are out of scope for the core extension and have been rolled back.
+
 - Profiling JSP rendering time: **Very hard**
   - Requires runtime instrumentation and integration with server/container.
 

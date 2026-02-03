@@ -64,15 +64,6 @@ Notes:
 - Taglib discovery is configurable via `jsp.taglibs.tldGlobs` (defaults to scanning `**/*.tld`).
 - Optional: taglibs from dependency jars can be picked up via `jsp.taglibs.enableJarScanning` + `jsp.taglibs.jarGlobs` (best-effort jar glob scanning).
 
-### Debugging integration (experimental)
-
-When debugging Java (for example when attaching to a Tomcat JVM), the extension provides **best-effort** JSP debugging help:
-
-- rewrite Java stack frames that point at Tomcat/Jasper generated `*_jsp.java` sources back to `.jsp/.jspf/.tag` files
-- translate breakpoints set in `.jsp/.jspf/.tag` files into breakpoints in the generated servlet `.java` sources (when mapping markers are available)
-
-This is intentionally Tomcat/Jasper-focused and depends on generated servlet sources being accessible.
-
 Highlighted JSP constructs include:
 
 - **JSP comments**
