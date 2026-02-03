@@ -1,5 +1,7 @@
 # Feature 8 — Diagnostics & profiling (JSP rendering performance)
 
+> **Scope reset (2026-02):** Runtime profiling features were removed from the core extension and are now out of scope.
+
 This document outlines how to implement **runtime profiling** and **performance diagnostics** for JSP pages, e.g.:
 
 - measure JSP rendering time

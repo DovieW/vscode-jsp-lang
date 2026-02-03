@@ -1,5 +1,7 @@
 # Feature 4 — Debugging JSP: breakpoints, stepping, and runtime inspection
 
+> **Scope reset (2026-02):** The debug adapter integration described here was removed from the core extension and is now considered out of scope.
+
 This document outlines how (and how hard) it is to support **debugging at the JSP source level** while a Java web app runs in a servlet container.
 
 The desired experience:
