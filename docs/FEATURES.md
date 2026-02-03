@@ -42,7 +42,7 @@ When editing `.jsp` files, the extension provides:
 - JSP linting (Feature 06):
   - info/warning diagnostics for scriptlet-heavy pages (presence/count/size/nesting heuristics)
   - warnings for malformed `<%@ taglib %>` directives (missing `prefix` / `uri`)
-  - warnings for unresolvable include targets (`<%@ include file="..." %>`, `<jsp:include page="..." />`)
+  - warnings for unresolvable include targets (`<%@ include file="..." %>`, `<jsp:include page="..." />`), configurable via `jsp.webRoots` + `jsp.includes.resolveStrategy`
   - optional Java *syntax* diagnostics inside scriptlets (no type checking)
 
 - Quick fixes (Code Actions) for a few safe cases:
@@ -63,6 +63,7 @@ Notes:
 - CSS features work by extracting CSS regions from a same-length HTML projection of the JSP file.
 - Taglib discovery is configurable via `jsp.taglibs.tldGlobs` (defaults to scanning `**/*.tld`).
 - Optional: taglibs from dependency jars can be picked up via `jsp.taglibs.enableJarScanning` + `jsp.taglibs.jarGlobs` (best-effort jar glob scanning).
+- Include resolution can be diagnosed via the **JSP: Diagnose Configuration** command.
 
 Highlighted JSP constructs include:
 

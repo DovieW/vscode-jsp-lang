@@ -8,6 +8,7 @@ This extension provides JSP support for VS Code:
 - Taglib support (custom/framework JSP tags) when a matching `.tld` exists in the workspace:
     - tag/attribute completions, hover docs, and warning diagnostics
 - Taglib-aware navigation (MVP): go to definition, find references, and safe file-local prefix rename
+- Configurable include resolution for `<%@ include %>` and `<jsp:include>` via `jsp.webRoots` + `jsp.includes.resolveStrategy`
 
 It does **not** (yet) implement JavaScript language features inside `<script>` blocks, nor Java IntelliSense for JSP scriptlets.
 
@@ -24,6 +25,12 @@ To enable [emmet abbreviations](https://code.visualstudio.com/docs/editor/emmet#
 ```
 
 ## Development
+
+## Configuration
+
+- `jsp.webRoots`: workspace-relative web roots used to resolve web-root style include paths (defaults: `.`, `src/main/webapp`, `WebContent`).
+- `jsp.includes.resolveStrategy`: `relative`, `webRoot`, or `both` (relative-first) for resolving include paths.
+- Command: **JSP: Diagnose Configuration** prints resolved web roots, include strategy, and taglib globs to the output channel.
 
 1) Install dependencies
 
