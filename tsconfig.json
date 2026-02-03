@@ -11,5 +11,5 @@
     "types": ["node", "vscode"],
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "server/src/**/*.ts"]
+  "include": ["src/**/*.ts", "server/src/**/*.ts", "test/**/*.ts"]
 }
