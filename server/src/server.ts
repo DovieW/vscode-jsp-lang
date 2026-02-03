@@ -47,6 +47,13 @@ import { getCSSLanguageService, type Stylesheet } from 'vscode-css-languageservi
 import { maskJspToHtml } from './jsp/maskToHtml';
 import { extractCssRegionsFromProjectedHtml, type CssRegion } from './jsp/extractCssRegions';
 import { extractJavaRegionsFromJsp, type JavaRegion } from './jsp/extractJavaRegions';
+import {
+  EL_IMPLICIT_OBJECTS,
+  extractElRegionsFromJsp,
+  findElIdentifierAtOffset,
+  isElIdentifierContext,
+  type ElRegion,
+} from './jsp/elSupport';
 import { buildTaglibIndex } from './jsp/taglibs/taglibIndex';
 import { parseTaglibDirectives } from './jsp/taglibs/parseTaglibDirectives';
 import { getStartTagContext } from './jsp/taglibs/startTagContext';
@@ -151,6 +158,7 @@ type ParsedDocumentCache = {
   cssRegions: Array<{ region: CssRegion; stylesheet: Stylesheet }>;
   javaRegions: JavaRegion[];
   pageImports: string[];
+  elRegions: ElRegion[];
 };
 
 const parsedCache = new Map<string, ParsedDocumentCache>();
@@ -167,7 +175,9 @@ function getOrCreateParsedCache(jspDocument: TextDocument): ParsedDocumentCache 
     return existing;
   }
 
-  const { regions: javaRegions, pageImports } = extractJavaRegionsFromJsp(jspDocument.getText());
+  const jspText = jspDocument.getText();
+  const { regions: javaRegions, pageImports } = extractJavaRegionsFromJsp(jspText);
+  const elRegions = extractElRegionsFromJsp(jspText);
 
   const htmlDocument = getProjectedHtmlDocument(jspDocument);
   const htmlParsed = htmlLanguageService.parseHTMLDocument(htmlDocument);
@@ -184,6 +194,7 @@ function getOrCreateParsedCache(jspDocument: TextDocument): ParsedDocumentCache 
     cssRegions,
     javaRegions,
     pageImports,
+    elRegions,
   };
   parsedCache.set(jspDocument.uri, next);
   return next;
@@ -222,6 +233,43 @@ function getJavaImplicitObjectCompletions(): CompletionList {
   }));
 
   return { isIncomplete: false, items };
+}
+
+function getElImplicitObjectCompletions(): CompletionList {
+  const items: CompletionItem[] = EL_IMPLICIT_OBJECTS.map(({ name, detail }) => ({
+    label: name,
+    kind: CompletionItemKind.Variable,
+    detail,
+  }));
+
+  return { isIncomplete: false, items };
+}
+
+function getElImplicitObjectHover(
+  doc: TextDocument,
+  cached: ParsedDocumentCache,
+  offset: number,
+): Hover | null {
+  const hit = findElIdentifierAtOffset(doc.getText(), cached.elRegions, offset);
+  if (!hit) {
+    return null;
+  }
+
+  const obj = EL_IMPLICIT_OBJECTS.find((item) => item.name === hit.name);
+  if (!obj) {
+    return null;
+  }
+
+  return {
+    contents: {
+      kind: MarkupKind.Markdown,
+      value: `**${obj.name}**\n\n${obj.description}`,
+    },
+    range: {
+      start: doc.positionAt(hit.startOffset),
+      end: doc.positionAt(hit.endOffset),
+    },
+  };
 }
 
 function getLinePrefix(doc: TextDocument, position: { line: number; character: number }): string {
@@ -1338,6 +1386,11 @@ connection.onCompletion(async (params: CompletionParams): Promise<CompletionList
     return getJavaImplicitObjectCompletions();
   }
 
+  const elContext = isElIdentifierContext(doc.getText(), cached.elRegions, offset);
+  if (elContext) {
+    return getElImplicitObjectCompletions();
+  }
+
   const cssHit = findCssRegionAtOffset(cached, offset);
   if (cssHit) {
     const { region, stylesheet } = cssHit;
@@ -1348,6 +1401,11 @@ connection.onCompletion(async (params: CompletionParams): Promise<CompletionList
 
     const list = cssLanguageService.doComplete(cssDoc, cssPos, stylesheet);
     return mapCompletionListFromCssToJsp(doc, region, cssDoc, list);
+  }
+
+  const elHover = getElImplicitObjectHover(doc, cached, offset);
+  if (elHover) {
+    return elHover;
   }
 
   const tldIndex = await ensureTaglibIndex();

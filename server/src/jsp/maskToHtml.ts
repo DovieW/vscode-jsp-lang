@@ -75,7 +75,7 @@ export function maskJspToHtml(source: string): string {
     i = block.start + 1;
   }
 
-  // 2) Mask ${...} / #{...} expressions, but keep the delimiters so HTML stays syntactically sane.
+  // 2) Mask ${...} / #{...} expressions entirely to avoid HTML/CSS diagnostics noise.
   i = 0;
   while (true) {
     const expr = maskExpression(out, i);
@@ -83,12 +83,9 @@ export function maskJspToHtml(source: string): string {
       break;
     }
 
-    // Keep '${' or '#{' and the closing '}' (when present), blank the inside.
-    const innerStart = Math.min(expr.start + 2, out.length);
-    const innerEndExclusive = Math.max(expr.endExclusive - 1, innerStart);
-    out = replaceWithSpaces(out, innerStart, innerEndExclusive);
+    out = replaceWithSpaces(out, expr.start, expr.endExclusive);
 
-    i = expr.start + 2;
+    i = Math.max(expr.start + 2, expr.endExclusive);
   }
 
   return out;
