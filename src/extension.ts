@@ -9,6 +9,7 @@ import {
 
 import { registerJavaStackFrameRewriter } from './debug/javaStackFrameRewriter';
 import { registerJavaBreakpointTranslator } from './debug/javaBreakpointTranslator';
+import { registerProfiling } from './profiling';
 
 let client: LanguageClient | undefined;
 let outputChannel: vscode.OutputChannel | undefined;
@@ -53,6 +54,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   // Feature 04 (Milestone 2): when setting breakpoints in .jsp/.jspf/.tag files during Java debugging,
   // translate them to breakpoints in the corresponding Tomcat/Jasper generated servlet source.
   registerJavaBreakpointTranslator(context, outputChannel);
+
+  registerProfiling(context);
 
   const serverModule = context.asAbsolutePath(path.join('dist', 'server.js'));
 
